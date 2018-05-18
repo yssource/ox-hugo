@@ -82,19 +82,18 @@
 (define-obsolete-function-alias 'org-hugo-export-subtree-to-md-after-save 'org-hugo-export-wim-to-md-after-save "2017-11-30")
 
 ;; Using the correct function for getting inherited Org tags.
-(defmacro org-hugo--get-tags-alias ()
-  "Generate alias to point to the correct fn for getting inherited Org tags."
-  ;; Starting Org 9.2, `org-get-tags' returns all the inherited tags
-  ;; instead of returning only the local tags i.e. only the current
-  ;; headline tags.
-  ;; https://code.orgmode.org/bzg/org-mode/commit/fbe56f89f75a8979e0ba48001a822518df2c66fe
-  ;; For Org <= 9.1, `org-get-tags' returned a list of tags *only* at
-  ;; the current heading, while `org-get-tags-at' returned inherited
-  ;; tags too.
+;; Starting Org 9.2, `org-get-tags' returns all the inherited tags
+;; instead of returning only the local tags i.e. only the current
+;; headline tags.
+;; https://code.orgmode.org/bzg/org-mode/commit/fbe56f89f75a8979e0ba48001a822518df2c66fe
+
+;; For Org <= 9.1, `org-get-tags' returned a list of tags *only* at
+;; the current heading, while `org-get-tags-at' returned inherited
+;; tags too.
+(with-no-warnings
   (if (fboundp #'org--get-local-tags)   ;If using Org 9.2+
-      `(defalias 'org-hugo--get-tags 'org-get-tags)
-    `(defalias 'org-hugo--get-tags 'org-get-tags-at)))
-(org-hugo--get-tags-alias)
+      (defalias 'org-hugo--get-tags 'org-get-tags)
+    (defalias 'org-hugo--get-tags 'org-get-tags-at)))
 
 (defvar org-hugo--subtree-coord nil
   "Variable to store the current valid Hugo subtree coordinates.
@@ -593,7 +592,7 @@ copied to this sub-directory inside the Hugo static directory."
   :safe #'stringp)
 
 (defcustom org-hugo-external-file-extensions-allowed-for-copying
-  '("jpg" "jpeg" "tiff" "png" "svg"
+  '("jpg" "jpeg" "tiff" "png" "svg" "gif"
     "pdf" "odt"
     "doc" "ppt" "xls"
     "docx" "pptx" "xlsx")
@@ -712,6 +711,7 @@ newer."
   :group 'org-export-hugo
   :type '(repeat symbol)
   :safe #'listp)
+
 
 
 ;;; Define Back-End
@@ -856,6 +856,7 @@ newer."
                    (:hugo-videos "HUGO_VIDEOS" nil nil newline)
                    ;; weight
                    (:hugo-weight "HUGO_WEIGHT" nil nil space)))
+
 
 
 ;;; Miscellaneous Helper Functions
@@ -1371,6 +1372,20 @@ INFO is a plist used as a communication channel."
                 (setf (car found-key-cell) key-repl)))))))
     data))
 
+;;;; TODO keywords
+(defun org-hugo--todo (todo info)
+  "Format TODO keywords into HTML."
+  (when todo
+    ;; (message "[DBG todo] todo: %S" todo)
+    ;; (message "[DBG todo] org-done-keywords: %S" org-done-keywords)
+    ;; (message "[DBG todo] is a done keyword? %S" (member todo org-done-keywords))
+    ;; (message "[DBG todo] html-todo-kwd-class-prefix: %S" (plist-get info :html-todo-kwd-class-prefix))
+    (format "<span class=\"org-todo %s %s%s\">%s</span>"
+            (if (member todo org-done-keywords) "done" "todo")
+            (or (org-string-nw-p (plist-get info :html-todo-kwd-class-prefix)) "")
+            (org-html-fix-class-name todo)
+            (org-hugo--replace-underscores-with-spaces todo))))
+
 
 
 ;;; Transcode Functions
@@ -1478,10 +1493,8 @@ a communication channel."
     (let* ((numbers (org-hugo--get-headline-number headline info nil))
            (level (org-export-get-relative-level headline info))
            (title (org-export-data (org-element-property :title headline) info)) ;`org-export-data' required
-           (todo (let ((todo1 (and (org-hugo--plist-get-true-p info :with-todo-keywords)
-                                   (org-element-property :todo-keyword headline))))
-                   (when (stringp todo1)
-                     (format "%s " todo1))))
+           (todo (and (org-hugo--plist-get-true-p info :with-todo-keywords)
+                      (org-element-property :todo-keyword headline)))
            (tags (and (org-hugo--plist-get-true-p info :with-tags)
                       (let ((tag-list (org-export-get-tags headline info)))
                         (and tag-list
@@ -1491,8 +1504,6 @@ a communication channel."
             (and (org-hugo--plist-get-true-p info :with-priority)
                  (let ((char (org-element-property :priority headline)))
                    (and char (format "[#%c] " char)))))
-           ;; Headline text without tags.
-           (heading (concat todo priority title))
            (style (plist-get info :md-headline-style)))
       ;; (message "[ox-hugo-headline DBG] num: %s" numbers)
       (cond
@@ -1506,7 +1517,8 @@ a communication channel."
                  (concat (number-to-string
                           (car (last (org-export-get-headline-number
                                       headline info))))
-                         "."))))
+                         ".")))
+              (heading (concat todo " " priority title))) ;Headline text without tags
           (concat bullet (make-string (- 4 (length bullet)) ?\s) heading tags "\n\n"
                   (and contents (replace-regexp-in-string "^" "    " contents)))))
        (t
@@ -1517,7 +1529,7 @@ a communication channel."
                                   )))
               (loffset (string-to-number (plist-get info :hugo-level-offset))) ;"" -> 0, "0" -> 0, "1" -> 1, ..
               (todo (when todo
-                      (concat (org-html--todo todo info) " "))))
+                      (concat (org-hugo--todo todo info) " "))))
           (concat (org-hugo--headline-title style level loffset title todo anchor numbers)
                   contents)))))))
 
@@ -2561,6 +2573,15 @@ INFO is a plist used as a communication channel."
            (title (replace-regexp-in-string "\\.\\.\\." "…" title))) ;HORIZONTAL ELLIPSIS
       title)))
 
+(defun org-hugo--replace-underscores-with-spaces (str)
+  "Replace double underscores in STR with single spaces.
+
+For example, \"some__thing\" would get converted to \"some
+thing\". "
+  ;; It is safe to assume that no one would want leading/trailing
+  ;; spaces in `str'.. so not checking for "__a" or "a__" cases.
+  (replace-regexp-in-string "\\([^_]\\)__\\([^_]\\)" "\\1 \\2" str)) ;"a__b"  -> "a b"
+
 (defun org-hugo--tag-processing-fn-replace-with-spaces-maybe (tag-list info)
   "Replace double underscores in TAG-LIST elements with single spaces.
 
@@ -2577,13 +2598,7 @@ This is one of the processing functions in
 `org-hugo-tag-processing-functions'."
   (let ((allow-spaces (org-hugo--plist-get-true-p info :hugo-allow-spaces-in-tags)))
     (if allow-spaces
-        (mapcar
-         (lambda (tag)
-           ;; It is safe to assume that no one would want
-           ;; leading/trailing spaces in tags/categories.. so not
-           ;; checking for "__a" or "a__" cases.
-           (replace-regexp-in-string "\\([^_]\\)__\\([^_]\\)" "\\1 \\2" tag)) ;"a__b"  -> "a b"
-         tag-list)
+        (mapcar #'org-hugo--replace-underscores-with-spaces tag-list)
       tag-list)))
 
 (defun org-hugo--tag-processing-fn-replace-with-hyphens-maybe (tag-list info)

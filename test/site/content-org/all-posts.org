@@ -1,5 +1,8 @@
 #+hugo_base_dir: ../
+
 #+seq_todo: TODO DRAFT DONE
+#+seq_todo: TEST__TODO | TEST__DONE
+
 #+property: header-args :eval no
 
 #+startup: indent
@@ -288,17 +291,17 @@ for testing.
 Below in Org source:
 #+begin_src org
 #+html: <style>.foo img { border:2px solid black; }</style>
-#+attr_html: :alt Go is fine though.
+#+attr_html: :alt Org mode logo
 #+attr_html: :width 300 :class foo
-[[file:https://golang.org/doc/gopher/pkg.png]]
+[[https://ox-hugo.scripter.co/test/images/org-mode-unicorn-logo.png]]
 #+end_src
 
 Rendered this:
 
 #+html: <style>.foo img { border:2px solid black; }</style>
-#+attr_html: :alt Go is fine though.
+#+attr_html: :alt Org mode logo
 #+attr_html: :width 300 :class foo
-[[file:https://golang.org/doc/gopher/pkg.png]]
+[[https://ox-hugo.scripter.co/test/images/org-mode-unicorn-logo.png]]
 
 *NOTE*: We cannot use =:style= in =#+attr_html= because Hugo does not
  /yet/ support a =style= argument in the =figure= shortcode
@@ -1281,11 +1284,16 @@ print(str[1:])
 : 	bc
 
 The whitespace before "bc" in the results block above should be preserved.
-** Indented source block
+** Indented source block :indented:lists:code_fence:highlight:code_block:@upstream:
 :PROPERTIES:
 :EXPORT_FILE_NAME: source-block-indented
 :END:
-Test that indented source blocks export fine.
+#+begin_description
+Test that indented source blocks, and also the ones in lists export
+fine.
+#+end_description
+
+Some content.
 
     #+begin_src emacs-lisp
     (defun small-shell ()
@@ -1295,7 +1303,9 @@ Test that indented source blocks export fine.
 	(shrink-window (- (window-height) 12))
     (ansi-term))
     #+end_src
-*** More tests!
+*** Code blocks in list using code fences
+Reference: {{{hugoissue(4006)}}}
+
 - List item 1
   #+begin_src emacs-lisp
   (message "I am in list at level-1 indentation")
@@ -1320,8 +1330,47 @@ Test that indented source blocks export fine.
 #+begin_src emacs-lisp
 (message "And now I am at level-0 indentation")
 #+end_src
+*** Code blocks in list using ~highlight~ shortcode
+Reference: {{{hugoissue(4717)}}}, {{{oxhugoissue(161)}}}
 
-Reference: {{{hugoissue(4006)}}}
+This is an *upstream* bug in ~hugo~ as of 2018-05-12. The issues is
+that when the code blocks in ~highlight~ shortcodes are inserted at
+the required indentation levels in lists.. so that they get rendered
+*in* the list at *that* indentation level, those indentations are not
+removed by ~hugo~, and thus become part of those code blocks.
+
+Also, related to this issue, it can be seen that all such indented
+code blocks have an empty second line too, probably just due to the
+unremoved indentation on the last line of those code blocks.
+
+In the above section, the same code blocks are code-fenced instead of
+using ~highlight~ shortcode, and the extra indentation is not seen
+there.
+
+- List item 1
+  #+begin_src emacs-lisp -n
+  (message "I am in list at level-1 indentation")
+  #+end_src
+  - List item 1.1
+    #+begin_src emacs-lisp -n
+    (message "I am in list at level-2 indentation")
+    #+end_src
+    - List item 1.1.1
+      #+begin_src emacs-lisp -n
+      (message "I am in list at level-3 indentation")
+      #+end_src
+  - List item 2.1
+    #+begin_src emacs-lisp -n
+    (message "I am in list back at level-2 indentation")
+    #+end_src
+- List item 2
+  #+begin_src emacs-lisp -n
+  (message "I am in list back at level-1 indentation")
+  #+end_src
+
+#+begin_src emacs-lisp -n
+(message "And now I am at level-0 indentation")
+#+end_src
 ** Markdown source block with Hugo shortcodes                     :shortcode:
 :PROPERTIES:
 :EXPORT_FILE_NAME: source-block-md-with-hugo-shortcodes
@@ -1335,22 +1384,22 @@ should *not* be expanded.. they should be visible verbatim.
 - {&lbrace;% .. %}&rbrace; --- [[https://gohugo.io/content-management/shortcodes/#shortcodes-with-markdown][Shortcodes with Markdown]]
 **** Code block using code fences
 #+begin_src md
-{{< figure src="https://orgmode.org/img/org-mode-unicorn-logo.png" >}}
-{{% figure src="https://orgmode.org/img/org-mode-unicorn-logo.png" %}}
+{{< figure src="https://ox-hugo.scripter.co/test/images/org-mode-unicorn-logo.png" >}}
+{{% figure src="https://ox-hugo.scripter.co/test/images/org-mode-unicorn-logo.png" %}}
 #+end_src
 **** Code block using =highlight= shortcode
 Here, the =-n= switch is added to the Org source block to
 auto-enable[fn:4] using the =highlight= shortcode.
 #+begin_src md -n
-{{< figure src="https://orgmode.org/img/org-mode-unicorn-logo.png" >}}
-{{% figure src="https://orgmode.org/img/org-mode-unicorn-logo.png" %}}
+{{< figure src="https://ox-hugo.scripter.co/test/images/org-mode-unicorn-logo.png" >}}
+{{% figure src="https://ox-hugo.scripter.co/test/images/org-mode-unicorn-logo.png" %}}
 #+end_src
 *** Shortcodes *not* escaped
 The =figure= shortcodes in the below example block *should* be
 expanded.. you should be seeing little unicorns below.
 #+begin_example
-{{< figure src="https://orgmode.org/img/org-mode-unicorn-logo.png" >}}
-{{% figure src="https://orgmode.org/img/org-mode-unicorn-logo.png" %}}
+{{< figure src="https://ox-hugo.scripter.co/test/images/org-mode-unicorn-logo.png" >}}
+{{% figure src="https://ox-hugo.scripter.co/test/images/org-mode-unicorn-logo.png" %}}
 #+end_example
 Above a =#+begin_example= .. =#+end_example= block is chosen
 arbitrarily. The Hugo shortcodes will remain unescaped in *any*
@@ -2004,6 +2053,53 @@ but not any simpler
 /italics/ \\
 +strikethrough+
 #+end_center
+** Wrapping Org headings in HTML tags   :wrapping:headings:section:tags:HTML:
+:PROPERTIES:
+:EXPORT_FILE_NAME: wrapping-org-headings-in-html-tags
+:END:
+#+begin_description
+Test the workaround for wrapping Org headings in HTML tags like
+~section~ and ~div~.
+#+end_description
+{{{oxhugoissue(160)}}}
+*** Org Source
+#+begin_src org
+,#+html: <style>.left { float: left; width: 45%;} .right { float: right; width: 45%;}</style>
+
+,#+html: <section class="left">
+# Hack to get around Blackfriday limitation: https://github.com/kaushalmodi/ox-hugo/issues/93
+,#+html: <section></section>
+,**** This section will show up on the left side
+Content in the left side section
+,#+html: </section>
+
+,#+html: <section class="right">
+,#+html: <section></section>
+,**** This section will show up on the right side
+Content in the right side section
+,#+html: </section>
+
+# Clear the floats
+,#+html: <div style="clear: both;"></div>
+#+end_src
+*** Output
+#+html: <style>.left { float: left; width: 45%;} .right { float: right; width: 45%;}</style>
+
+#+html: <section class="left">
+# Hack to get around Blackfriday limitation: https://github.com/kaushalmodi/ox-hugo/issues/93
+#+html: <section></section>
+**** This section will show up on the left side
+Content in the left side section
+#+html: </section>
+
+#+html: <section class="right">
+#+html: <section></section>
+**** This section will show up on the right side
+Content in the right side section
+#+html: </section>
+
+# Clear the floats
+#+html: <div style="clear: both;"></div>
 * Page Bundles                                                 :page_bundles:
 :PROPERTIES:
 :EXPORT_HUGO_SECTION: bundles
@@ -2139,6 +2235,7 @@ There are many use cases of such headless page bundles:
 :END:
 This is a regular page. Below content is fetched from the *headless
 page bundle* =headless-page-bundle-x=.
+ - [[https://raw.githubusercontent.com/kaushalmodi/ox-hugo/master/test/site/content/bundles/headless-page-bundle-x/index.md][Source (~index.md~)]] of the referenced headless bundle.
 * Footnotes Test                                                   :footnote:
 ** Footnotes 1
 :PROPERTIES:
@@ -2441,7 +2538,7 @@ automatically).
 {{{oxhugoissue(133)}}}
 
 #+attr_html: :width 10% :target _self
-[[https://orgmode.org/img/org-mode-unicorn-logo.png][https://orgmode.org/img/org-mode-unicorn-logo.png]]
+[[https://ox-hugo.scripter.co/test/images/org-mode-unicorn-logo.png][https://ox-hugo.scripter.co/test/images/org-mode-unicorn-logo.png]]
 
 Above is an hyperlinked image with the HTML attributes set as
 =#+attr_html: :width 10% :target _self= in Org.
@@ -2457,7 +2554,7 @@ Above is an hyperlinked image with the HTML attributes set as
 
 #+attr_html: :width 10% :target _self
 Here's an inline hyperlinked image with the exact same HTML
-attributes: [[https://orgmode.org/img/org-mode-unicorn-logo.png][https://orgmode.org/img/org-mode-unicorn-logo.png]]. So,
+attributes: [[https://ox-hugo.scripter.co/test/images/org-mode-unicorn-logo.png][https://ox-hugo.scripter.co/test/images/org-mode-unicorn-logo.png]]. So,
 clicking this image too should open the linked image in the same
 brower tab.
 ** External Links                                            :external_links:
@@ -3686,6 +3783,16 @@ Some text.
 *** DONE Heading 2
 CLOSED: [2017-08-09 Wed 16:15]
 Some text.
+** Org TODO keywords with double-underscores       :double_underscores:space:
+:PROPERTIES:
+:EXPORT_FILE_NAME: org-todo-kwd-with-double-underscores
+:END:
+#+begin_description
+This feature that replaces double-underscores in Org TODO keywords
+with spaces was added in {{{commit(7691f0453b)}}}.
+#+end_description
+*** TEST__TODO This heading's TODO kwd should read as "TEST TODO"
+*** TEST__DONE This heading's TODO kwd should read as "TEST DONE"
 * Level Offset                                                 :level_offset:
 ** Default level offset
 :PROPERTIES:
