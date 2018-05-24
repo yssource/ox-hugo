@@ -1374,7 +1374,14 @@ INFO is a plist used as a communication channel."
 
 ;;;; TODO keywords
 (defun org-hugo--todo (todo info)
-  "Format TODO keywords into HTML."
+  "Format TODO keywords into HTML.
+
+This function is almost like `org-html--todo' except that:
+- An \"org-todo\" class is always added to the span element.
+- `org-hugo--replace-underscores-with-spaces' is used to replace
+  double-underscores in TODO with spaces.
+
+INFO is a plist used as a communication channel."
   (when todo
     ;; (message "[DBG todo] todo: %S" todo)
     ;; (message "[DBG todo] org-done-keywords: %S" org-done-keywords)
@@ -2233,9 +2240,16 @@ channel."
   "Transcode a SPECIAL-BLOCK element from Org to Hugo-compatible Markdown.
 CONTENTS holds the contents of the block.
 
-If the special block if of type \"description\", the value of
+If the special block is of type \"description\", the value of
 `:description' key of the INFO plist gets overwritten by the
 contents of that block.
+
+Else if the special block is of type \"details\", an HTML
+`<details>' element with an optional `<summary>' element is
+created.  The \"summary\" portion if present comes first, and is
+separated from the following \"details\" portion using a solo
+\"---\" string on a newline.  See
+https://ox-hugo.scripter.co/doc/details-and-summary/ for more.
 
 Else if the SPECIAL-BLOCK type matches one of the shortcodes set
 in HUGO_PAIRED_SHORTCODES property, export them as Markdown or
@@ -2258,6 +2272,49 @@ INFO is a plist holding export options."
       ;; Overwrite the value of the `:description' key in `info'.
       (plist-put info :description contents)
       nil)
+     ((string= block-type "details")
+      ;; Recognize Org Special blocks like:
+      ;;   #+begin_details
+      ;;   summary. This will be wrapped in <summary> and </summary>
+      ;;   ---
+      ;;   details
+      ;;   #+end_details
+      (let* ((is-open (member "open" (org-element-property :attr_html special-block)))
+             (str1 (org-blackfriday-special-block special-block contents nil))
+             ;; Insert a new-line before the closing </details> tag
+             ;; for correct Markdown parsing for cases when the
+             ;; Special Block content ends a code block. Without this
+             ;; inserted newline, the Markdown converted content will
+             ;; look like below, and Blackfriday won't parse it
+             ;; correctly.
+             ;;   ```emacs-lisp
+             ;;   (message "a code block")
+             ;;   ```</details>
+             ;; A closing </p> tag is also added.. the opening <p>
+             ;; tag is later added in the `str2' var if summary is
+             ;; present, else in `str3' var.
+             (str1 (replace-regexp-in-string "</details>\\'" "\n</p>\\&" str1))
+             ;; Detect the summary divider special string "---".  It
+             ;; must begin at the beginning of a line.  Also ensure to
+             ;; replace only the first match, if any.
+             ;; Also add the opening <p> tag with "details" class
+             ;; so that just as CSS rules can be set for summary
+             ;; ("details summary"), they can be set for the details
+             ;; portion following the <summary> too, using "details
+             ;; .details".
+             (str2 (replace-regexp-in-string
+                    "^\\(---\\)\n\\(.\\|\n\\)*\\'"
+                    "</summary><p class=\"details\">"
+                    str1 nil nil 1))
+             (has-summary (not (string= str1 str2)))
+             str3)
+        ;; (message "[DBG details/summary]: is-open:%S `%s' `%s'" is-open str1 str2)
+        (setq str3 (if has-summary
+                       (replace-regexp-in-string "\\`<details>" "\\&<summary>" str2)
+                     (replace-regexp-in-string "\\`<details>" "\\&<p class=\"details\">" str2)))
+        (if is-open
+            (replace-regexp-in-string "\\`\\(<details\\)>" "\\1 open>" str3)
+          str3)))
      ;; https://emacs.stackexchange.com/a/28685/115
      ((cl-member block-type paired-shortcodes
                  ;; If `block-type' is "foo", check if any of the
@@ -2577,7 +2634,7 @@ INFO is a plist used as a communication channel."
   "Replace double underscores in STR with single spaces.
 
 For example, \"some__thing\" would get converted to \"some
-thing\". "
+thing\"."
   ;; It is safe to assume that no one would want leading/trailing
   ;; spaces in `str'.. so not checking for "__a" or "a__" cases.
   (replace-regexp-in-string "\\([^_]\\)__\\([^_]\\)" "\\1 \\2" str)) ;"a__b"  -> "a b"
