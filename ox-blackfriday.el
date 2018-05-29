@@ -696,7 +696,51 @@ This function is adapted from `org-html-special-block'."
                        "")))
       (cond
        (html5-inline-fancy
-        (format "<%s%s>%s</%s>"
+        (cond
+         ((string= block-type "details")
+          ;; Recognize Org Special blocks like:
+          ;;   #+begin_details
+          ;;   #+begin_summary
+          ;;   This is summary.
+          ;;   #+end_summary
+          ;;   Here are the details.
+          ;;   #+end_details
+          (let ((p-open "<p class=\"details\">"))
+            (setq contents
+                  (concat
+                   ;; Wrap the "details" portion in the <details> tag
+                   ;; with '<p class="details"> .. </p>'.  With that,
+                   ;; CSS rules can be set specific to that details
+                   ;; portion using "details .details".
+                   (if (string-match "\\(?1:<summary>\\(?:.\\|\n\\)*</summary>\\)" contents) ;If summary exists
+                       (replace-match (format "\\1\n%s" p-open) nil nil contents 1)
+                     (concat p-open contents))
+                   ;; A newline is inserted before the closing </p>
+                   ;; tag for the reason explained below using the
+                   ;; emacs-lisp Markdown code block.
+                   "\n</p>")))
+          ;; Insert the "open" attribute only if user has ":open t" in
+          ;; "#+attr_html".
+          (when (org-string-nw-p attr-str)
+            (when (string-match "\\(?1:open\\(?2:=\"\\(?3:t\\)\"\\)\\)" attr-str)
+              (if (match-string 3 attr-str) ;if attr-str contains `open="t"'
+                  (setq attr-str (replace-match "" nil nil attr-str 2))
+                (setq attr-str (replace-match "" nil nil attr-str 1)))))))
+        ;; Insert a newline before and after the `contents' to handle
+        ;; the cases where that could begin or end with a Markdown
+        ;; blocks like:
+        ;;   ```emacs-lisp
+        ;;   (message "foo")
+        ;;   ```
+        ;; An example scenario would be where such content could be
+        ;; present in the "inline" <details> or <summary> Special
+        ;; Blocks.
+        ;; Without those newlines, the Markdown converted content will
+        ;; look like below, and Blackfriday won't parse it correctly.
+        ;;   <details>```emacs-lisp
+        ;;   (message "foo")
+        ;;   ```</details>
+        (format "<%s%s>\n%s\n</%s>"
                 block-type attr-str contents block-type))
        (html5-block-fancy
         (format "<%s%s>\n  <%s></%s>\n\n%s\n\n</%s>" ;See footnote 1
