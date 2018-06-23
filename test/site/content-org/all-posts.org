@@ -443,7 +443,7 @@ This post must not be exported as it is tagged =noexport=.
 :EXPORT_FILE_NAME: commented-post
 :END:
 This post must not be exported as it is commented.
-* Section
+* Section                                                           :section:
 ** Articles
 :PROPERTIES:
 :EXPORT_HUGO_SECTION: articles
@@ -489,7 +489,37 @@ Here is the second post on Emacs.
 :EXPORT_HUGO_SECTION: zoo
 :EXPORT_FILE_NAME: post-in-zoo-section
 :END:
+#+begin_description
+Test where ~EXPORT_HUGO_SECTION~ is set in the post subtree itself.
+#+end_description
 This post will be created in the =zoo= section.
+** Null HUGO_SECTION                                             :root_level:
+*** Using empty EXPORT_HUGO_SECTION
+:PROPERTIES:
+:EXPORT_HUGO_SECTION:
+:EXPORT_FILE_NAME: root-level-content-empty-section
+:END:
+#+begin_description
+Case where ~EXPORT_HUGO_SECTION~ is set to nothing.
+#+end_description
+
+{{{oxhugoissue(164)}}}
+
+This post is created at the site root.
+*** Setting EXPORT_HUGO_SECTION to "/"
+:PROPERTIES:
+:EXPORT_HUGO_SECTION: /
+:EXPORT_FILE_NAME: root-level-content-section-set-to-slash
+:END:
+#+begin_description
+Case where ~EXPORT_HUGO_SECTION~ is set to ~/~.
+#+end_description
+
+{{{oxhugoissue(164)}}}
+
+This behaves the same as *not setting* ~EXPORT_HUGO_SECTION~ at all.
+
+This post is created at the site root.
 * Tables                                                              :table:
 ** Simple Table
 :PROPERTIES:
@@ -1705,6 +1735,7 @@ Here there is white space in menu name property.
 :EXPORT_HUGO_CUSTOM_FRONT_MATTER+: :alpha 1
 :EXPORT_HUGO_CUSTOM_FRONT_MATTER+: :beta "two words"
 :EXPORT_HUGO_CUSTOM_FRONT_MATTER+: :gamma 10
+:EXPORT_HUGO_CUSTOM_FRONT_MATTER+: :empty_string ""
 :END:
 From [[https://orgmode.org/manual/Property-syntax.html][*(org) Property syntax*]]:
 #+begin_quote
@@ -1755,6 +1786,7 @@ The following results in the 'genres' property having the value
 :EXPORT_HUGO_CUSTOM_FRONT_MATTER+: :header '((image . "projects/Readingabook.jpg") (caption . "stay hungry, stay foolish"))
 :EXPORT_HUGO_CUSTOM_FRONT_MATTER+: :collection '((animals . (dog cat "penguin" "mountain gorilla")) (nothing) (nonnil . t) (strings-symbols . ("abc" def "two words")) (integers . (123 -5 17 1_234)) (floats . (12.3 -5.0 -17E-6)) (booleans . (true false)))
 :EXPORT_HUGO_CUSTOM_FRONT_MATTER+: :random '((foo . bar))
+:EXPORT_HUGO_CUSTOM_FRONT_MATTER+: :empty_string_value '((empty . ""))
 :END:
 *** Custom front matter with nested maps in TOML
 :PROPERTIES:
@@ -1962,6 +1994,22 @@ And these ones should be eventually removed and _underline_ the text
 - /This is italics, and *this is bold too*, and back to plain
   italics./
 - *This is bold, and /this is italics too/, and back to plain bold.*
+** Italicize links with underscores                 :italic:links:underscore:
+:PROPERTIES:
+:EXPORT_FILE_NAME: italicize-links-with-underscores
+:END:
+#+begin_description
+Test that links with underscores can be italicized/emboldened/both.
+#+end_description
+{{{oxhugoissue(170)}}}
+*** External links
+- Italic :: /What is a [[https://en.wikipedia.org/wiki/Two%27s_complement][two's complement]]?/
+- Bold :: *What is a [[https://en.wikipedia.org/wiki/Two%27s_complement][two's complement]]?*
+- Bold + Italic :: /*What is a [[https://en.wikipedia.org/wiki/Two%27s_complement][two's complement]]?*/
+*** Internal links
+- Italic :: /Link to [[file:single-posts/post_with_underscore_in_name.org][another post on this site]]?/
+- Bold :: *Link to [[file:single-posts/post_with_underscore_in_name.org][another post on this site]]?*
+- Bold + Italic :: /*Link to [[file:single-posts/post_with_underscore_in_name.org][another post on this site]]?*/
 ** Single and Double quotes
 :PROPERTIES:
 :EXPORT_FILE_NAME: single-double-quotes
@@ -4612,6 +4660,55 @@ so) characters after ~<!--endtoc-->~ is considered as summary.
 
 This partial needs to be used wherever the summary text is needed
 (example: the Opengraph =og:description= meta tag).
+**** TOC with TODO headlines                                           :todo:
+***** CSS for TODO                                                 :noexport:
+:PROPERTIES:
+:CUSTOM_ID: todo-css
+:END:
+#+begin_export html
+<style>
+.org-todo {
+    font-size: 0.8em;
+    font-weight: 700;
+}
+/* *** Org TODO set to TODO state */
+.org-todo.todo {
+    color: #e60000;
+}
+/* *** Org TODO set to DONE state */
+.org-todo.done {
+    color: green;
+}
+</style>
+#+end_export
+***** TOC with TODO enabled (default)                                :enable:
+:PROPERTIES:
+:EXPORT_FILE_NAME: toc-with-todo-enabled
+:EXPORT_OPTIONS: toc:t todo:t
+:END:
+#+begin_description
+TODO states if present are prefixed to the headings -- both in the body
+and TOC.
+#+end_description
+#+include: "./all-posts.org::#todo-css" :only-contents t
+****** No TODO state
+****** TODO Something to do
+****** DONE Something done
+CLOSED: [2018-06-12 Tue 22:12]
+***** TOC with TODO disabled                                        :disable:
+:PROPERTIES:
+:EXPORT_FILE_NAME: toc-with-todo-disabled
+:EXPORT_OPTIONS: toc:t todo:nil
+:END:
+#+begin_description
+No TODO states are prefixed to the headings -- neither in the body, nor
+in the TOC.
+#+end_description
+#+include: "./all-posts.org::#todo-css" :only-contents t
+****** No TODO state
+****** TODO Something to do
+****** DONE Something done
+CLOSED: [2018-06-12 Tue 22:12]
 ** Sub/superscripts                                 :superscripts:subscripts:
 *** Sub/superscripts require braces
 :PROPERTIES:
@@ -4803,6 +4900,21 @@ This post has 1 author.
 :END:
 This post has multiple authors. In Org, multiple authors are added
 comma-separated.
+*** Uniquify duplicate authors                                    :duplicate:
+:PROPERTIES:
+:EXPORT_FILE_NAME: duplicate-authors
+:EXPORT_AUTHOR: Foo Bar, Foo Bar
+:END:
+#+begin_description
+Test that duplicate authors get uniquified in the export.
+#+end_description
+The duplication can happen in real use if an Org setup file has the
+same author as in the Org document where that file is included using
+~SETUPFILE~. This test mimics this case:
+#+begin_src org
+,#+setupfile: some-file.org # some-file.org contains "#+author: Foo Bar"
+,#+author: Foo Bar
+#+end_src
 ** Keywords                                                        :keywords:
 *** Single keyword in front-matter
 :PROPERTIES:

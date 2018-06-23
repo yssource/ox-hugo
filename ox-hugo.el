@@ -995,15 +995,18 @@ When optional argument LOCAL is non-nil, build a table of
 contents according to the current headline."
   (let* ((toc-headline
           (unless local
-            (let ((style (plist-get info :md-headline-style))
-                  (loffset (string-to-number (plist-get info :hugo-level-offset)))
-                  (title (org-html--translate "Table of Contents" info)))
-              (org-hugo--headline-title style 1 loffset title))))
+            (format "\n<div class=\"heading\">%s</div>\n\n"
+                    (org-html--translate "Table of Contents" info))))
          (toc-items
           (mapconcat
            (lambda (headline)
              (let* ((level (org-export-get-relative-level headline info))
                     (indentation (make-string (* 4 (1- level)) ?\s))
+                    (todo (and (org-hugo--plist-get-true-p info :with-todo-keywords)
+                               (org-element-property :todo-keyword headline)))
+                    (todo-str (if todo
+                                  (concat (org-hugo--todo todo info) " ")
+                                ""))
                     (headline-num-list (org-export-get-headline-number headline info))
                     (number (if headline-num-list
                                 ;; (message "[ox-hugo TOC DBG] headline-num-list: %S" headline-num-list)
@@ -1011,7 +1014,8 @@ contents according to the current headline."
                               ""))
                     (title (org-export-data (org-element-property :title headline) info))
                     (toc-entry
-                     (format "[%s](#%s)"
+                     (format "[%s%s](#%s)"
+                             todo-str
                              (org-export-data-with-backend
                               (org-export-get-alt-title headline info)
                               (org-export-toc-entry-backend 'hugo)
@@ -1027,6 +1031,7 @@ contents according to the current headline."
                                       (format ":%s:"
                                               (mapconcat #'identity tags ":")))))))
                ;; (message "[ox-hugo build-toc DBG] level:%d, number:%s" level number)
+               ;; (message "[ox-hugo build-toc DBG] todo: %s | %s" todo todo-str)
                (concat indentation "- " number toc-entry tags)))
            (org-export-collect-headlines info n (and local keyword))
            "\n"))                       ;Newline between TOC items
@@ -1687,9 +1692,13 @@ INFO is a plist used as a communication channel.
 
 Unlike `org-md-link', this function will also copy local images
 and rewrite link paths to make blogging more seamless."
-  (let ((raw-link (org-element-property :raw-link link))
-        (raw-path (org-element-property :path link))
-        (type (org-element-property :type link)))
+  (let* ((raw-link (org-element-property :raw-link link))
+         (raw-path (org-element-property :path link))
+         (type (org-element-property :type link))
+         (link-is-url (member type '("http" "https" "ftp" "mailto"))))
+    (when (and (stringp raw-path)
+               link-is-url)
+      (setq raw-path (org-blackfriday-url-sanitize raw-path)))
     ;; (message "[ox-hugo-link DBG] link: %S" link)
     ;; (message "[ox-hugo-link DBG] link path: %s" (org-element-property :path link))
     ;; (message "[ox-hugo-link DBG] link filename: %s" (expand-file-name (plist-get (car (cdr link)) :path)))
@@ -1762,7 +1771,7 @@ and rewrite link paths to make blogging more seamless."
                                 grand-parent
                               parent))
              (inline-image (not (org-html-standalone-image-p useful-parent info)))
-             (source (if (member type '("http" "https" "ftp"))
+             (source (if link-is-url
                          (concat type ":" path)
                        path))
              (attr (org-export-read-attribute :attr_html useful-parent))
@@ -1856,7 +1865,7 @@ and rewrite link paths to make blogging more seamless."
      (t
       (let* ((link-param-str "")
              (path (cond
-                    ((member type '("http" "https" "ftp" "mailto"))
+                    (link-is-url
                      ;; Taken from ox-html.el -- Extract attributes
                      ;; from parent's paragraph.  HACK: Only do this
                      ;; for the first link in parent (inner image link
@@ -2386,11 +2395,14 @@ If VAL contains newlines, format it according to TOML or YAML
 FORMAT to preserve them.
 
 VAL is returned as-it-is under the following cases:
-- It is a number or nil.
+- It is a number.
 - It is a string and is already wrapped with double quotes.
 - It is a string and it's value is \"true\" or \"false\".
 - It is a string representing a date.
 - It is a string representing an integer or float.
+
+If VAL is nil or an empty string, a quoted empty string \"\" is
+returned.
 
 If optional argument PREFER-NO-QUOTES is non-nil, return the VAL
 as-it-is if it's a string with just alphanumeric characters.
@@ -2475,9 +2487,9 @@ Optional argument FORMAT can be \"toml\" or \"yaml\"."
         (setq val (replace-regexp-in-string "\"" "\\\\\""  val))
         (concat "\"" val "\""))))
      (t                                 ;If `val' is any empty string
-      "")))
+      "\"\"")))
    (t                            ;Return empty string if anything else
-    "")))
+    "\"\"")))
 
 (defun org-hugo--parse-property-arguments (str)
   "Return an alist converted from a string STR of Hugo property value.
@@ -2719,10 +2731,19 @@ INFO is a plist used as a communication channel."
                                    (org-export-data (plist-get info :author) info)))) ;`org-export-data' required
                              (when author-raw
                                ;; Multiple authors can be comma or
-                               ;; newline separated.
+                               ;; newline separated. The newline
+                               ;; separated authors work only for the
+                               ;; #+author keyword; example:
+                               ;;   #+author: Author1
+                               ;;   #+author: Author2
+                               ;;
+                               ;; If using the subtree properties they
+                               ;; need to be comma-separated:
+                               ;;   :EXPORT_AUTHOR: Author1, Author2
                                (let ((author-list-1 (org-split-string author-raw "[,\n]")))
                                  ;; Don't allow spaces around author names.
-                                 (mapcar #'org-trim author-list-1))))))
+                                 ;; Also remove duplicate authors.
+                                 (delete-dups (mapcar #'org-trim author-list-1)))))))
          (creator (and (plist-get info :with-creator)
                        (plist-get info :creator)))
          (locale (and (plist-get info :hugo-with-locale)
@@ -2951,6 +2972,12 @@ are \"toml\" and \"yaml\"."
           ;; same for blackfriday param values.
           (cond
            ((string= key "menu")
+            (unless (listp value)
+              (user-error (concat "The `menu' front-matter did not get the expected "
+                                  "list value; probably because HUGO_MENU was not "
+                                  "used to set its value.\n"
+                                  "Usage examples: \":EXPORT_HUGO_MENU: :menu main\" or "
+                                  "\"#+hugo_menu: :menu main\"")))
             ;; Menu name needs to be non-nil to insert menu info in front matter.
             (when (assoc 'menu value)
               (let* ((menu-alist value)
@@ -3002,6 +3029,12 @@ are \"toml\" and \"yaml\"."
                                                 indent menu-key sign menu-value)))))))
                   (setq menu-string (concat menu-entry-str menu-value-str))))))
            ((string= key "resources")
+            (unless (listp value)
+              (user-error (concat "The `resources' front-matter did not get the expected "
+                                  "list value; probably because HUGO_RESOURCES was not "
+                                  "used to set its value.\n"
+                                  "Usage examples: \":EXPORT_HUGO_RESOURCES: :src \"my-image.png\" :title \"My Image\" "
+                                  "or \"#+hugo_resources: :src \"my-image.png\" :title \"My Image\"")))
             (when value
               (dolist (res-alist value)
                 (let ((res-entry-str "")

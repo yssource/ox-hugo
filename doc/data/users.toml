@@ -193,6 +193,20 @@
   org_dir = "content-org"
   site = "https://www.baty.net/"
 
+[tsdye1]
+  author = "Thomas S. Dye"
+  source = "https://github.com/tsdye/online-web-sites"
+  branch = "master"
+  org_dir = "an-archaeologist-reads"
+  site = "http://www.tsdye.online/an-archaeologist-reads"
+
+[dschrempf]
+  author = "Dominik Schrempf"
+  source = "https://github.com/dschrempf/blog"
+  branch = "master"
+  org_dir = "org"
+  site = "https://dschrempf.github.io/"
+
 # []
 #   author = ""
 #   source = ""

@@ -7,7 +7,7 @@ draft = false
 <div class="ox-hugo-toc toc">
 <div></div>
 
-## Table of Contents
+<div class="heading">Table of Contents</div>
 
 - [`ox-hugo`'s Solution](#ox-hugo-s-solution)
 - [Snippet](#snippet)
@@ -31,7 +31,7 @@ HTML comment **`<!--endtoc-->`** after the TOC.
 
 ## Snippet {#snippet}
 
-As the `more` comment is not present, the [`summary_minus_toc.html`](https://github.com/kaushalmodi/hugo-bare-min-theme/blob/master/layouts/partials/summary_minus_toc.html)
+As the `more` comment is not present, the [`summary_minus_toc.html`](https://github.com/kaushalmodi/hugo-bare-min-theme/blob/master/layouts/partials/summary%5Fminus%5Ftoc.html)
 partial used for this test site ensures that only the first 300 (or
 so) characters after `<!--endtoc-->` is considered as summary.
 
