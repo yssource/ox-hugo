@@ -794,8 +794,8 @@ newer."
                    ;; description
                    (:description "DESCRIPTION" nil nil)
                    ;; draft
-                   ;; "draft" value is also interpreted by TODO state
-                   ;; of a post as Org subtree.
+                   ;; "draft" value interpreted by the TODO state of a
+                   ;; post as Org subtree gets higher precedence.
                    (:hugo-draft "HUGO_DRAFT" nil nil)
                    ;; expiryDate
                    (:hugo-expirydate "HUGO_EXPIRYDATE" nil nil)
@@ -1397,6 +1397,47 @@ INFO is a plist used as a communication channel."
             (or (org-string-nw-p (plist-get info :html-todo-kwd-class-prefix)) "")
             (org-html-fix-class-name todo)
             (org-hugo--replace-underscores-with-spaces todo))))
+
+;;;; Parse draft state
+(defun org-hugo--parse-draft-state (info)
+  "Parse the draft state of the post heading at point.
+
+Return a \"true\" or \"false\" string.
+
+For per-subtree export flow, the draft state parsed from the Org
+TODO state has a higher precedence than the value of HUGO_DRAFT
+keyword/property.
+
+INFO is a plist used as a communication channel."
+  (let* ((todo-keyword (org-entry-get (point) "TODO"))
+         (draft (cond
+                 ((stringp todo-keyword)
+                  (if (member todo-keyword org-done-keywords)
+                      nil
+                    (progn
+                      (when (string= "DRAFT" todo-keyword)
+                        (let ((title (org-entry-get (point) "ITEM"))) ;Post title
+                          (message "[ox-hugo] `%s' post is marked as a DRAFT" title)))
+                      t)))
+                 (;; If the HUGO_DRAFT keyword/property *is* set, but
+                  ;; not to nil.
+                  (plist-get info :hugo-draft)
+                  (let* ((draft-1 (org-hugo--front-matter-value-booleanize (plist-get info :hugo-draft)))
+                         (is-draft (if (string= "true" draft-1) t nil)))
+                    (when is-draft
+                      (let* ((entry (org-element-at-point))
+                             (is-subtree (org-element-property :EXPORT_FILE_NAME entry))
+                             (title (if is-subtree
+                                        (org-entry-get (point) "ITEM")
+                                      (or (car (plist-get info :title)) "<EMPTY TITLE>"))))
+                        (message "[ox-hugo] `%s' post is marked as a DRAFT" title)))
+                    is-draft))
+                 (t ;Neither of Org TODO state and HUGO_DRAFT keyword/property are set
+                  nil)))
+         (draft-bool-str (org-hugo--front-matter-value-booleanize (symbol-name draft))))
+    ;; (message "dbg: draft-state: todo keyword=%S HUGO_DRAFT=%S draft=%S"
+    ;;          todo-keyword (plist-get info :hugo-draft) draft-bool-str)
+    draft-bool-str))
 
 
 
@@ -2284,58 +2325,60 @@ INFO is a plist holding export options."
                                               (split-string str " "))))
                              str-list))
         (sc-regexp "\\`%%?%s\\'") ;Regexp to match an element from `paired-shortcodes'
-        (contents (org-trim contents)))
-    (cond
-     ((string= block-type "description")
-      ;; Overwrite the value of the `:description' key in `info'.
-      (plist-put info :description contents)
-      nil)
-     ;; https://emacs.stackexchange.com/a/28685/115
-     ((cl-member block-type paired-shortcodes
-                 ;; If `block-type' is "foo", check if any of the
-                 ;; elements in `paired-shortcodes' is "foo" or
-                 ;; "%foo".
-                 :test (lambda (b sc) ;`sc' would be an element from `paired-shortcodes'
-                         (string-match-p (format sc-regexp b) sc)))
-      (let* ((attr-sc (org-export-read-attribute :attr_shortcode special-block))
-             ;; Positional arguments.
-             (pos-args (and (null attr-sc)
-                            ;; If the shortcode attributes are not of
-                            ;; the type ":foo bar" but are something
-                            ;; like "foo bar".
-                            (let* ((raw-list (org-element-property :attr_shortcode special-block))
-                                   (raw-str (mapconcat #'identity raw-list " ")))
-                              (org-string-nw-p raw-str))))
-             ;; Named arguments.
-             (named-args (unless pos-args
-                           (org-string-nw-p (org-html--make-attribute-string attr-sc))))
-             (sc-args (or pos-args named-args))
-             (sc-args (if sc-args
-                          (concat " " sc-args " ")
-                        " "))
-             (matched-sc-str (car
-                              (cl-member block-type paired-shortcodes
-                                         :test (lambda (b sc) ;`sc' would be an element from `paired-shortcodes'
-                                                 (string-match-p (format sc-regexp b) sc)))))
-             (sc-open-char (if (string-prefix-p "%" matched-sc-str)
-                               "%"
-                             "<"))
-             (sc-close-char (if (string-prefix-p "%" matched-sc-str)
-                                "%"
-                              ">"))
-             (sc-begin (format "{{%s %s%s%s}}"
-                               sc-open-char block-type sc-args sc-close-char))
-             (sc-end (format "{{%s /%s %s}}"
-                             sc-open-char block-type sc-close-char)))
-        ;; (message "[ox-hugo-spl-blk DBG] attr-sc1: %s"
-        ;;          (org-element-property :attr_shortcode special-block))
-        ;; (message "[ox-hugo-spl-blk DBG] attr-sc: %s" attr-sc)
-        ;; (message "[ox-hugo-spl-blk DBG] pos-args: %s" pos-args)
-        ;; (message "[ox-hugo-spl-blk DBG] named-args: %s" named-args)
-        (format "%s\n%s\n%s"
-                sc-begin contents sc-end)))
-     (t
-      (org-blackfriday-special-block special-block contents nil)))))
+        (contents (when (stringp contents)
+                    (org-trim contents))))
+    (when contents
+      (cond
+       ((string= block-type "description")
+        ;; Overwrite the value of the `:description' key in `info'.
+        (plist-put info :description contents)
+        nil)
+       ;; https://emacs.stackexchange.com/a/28685/115
+       ((cl-member block-type paired-shortcodes
+                   ;; If `block-type' is "foo", check if any of the
+                   ;; elements in `paired-shortcodes' is "foo" or
+                   ;; "%foo".
+                   :test (lambda (b sc) ;`sc' would be an element from `paired-shortcodes'
+                           (string-match-p (format sc-regexp b) sc)))
+        (let* ((attr-sc (org-export-read-attribute :attr_shortcode special-block))
+               ;; Positional arguments.
+               (pos-args (and (null attr-sc)
+                              ;; If the shortcode attributes are not of
+                              ;; the type ":foo bar" but are something
+                              ;; like "foo bar".
+                              (let* ((raw-list (org-element-property :attr_shortcode special-block))
+                                     (raw-str (mapconcat #'identity raw-list " ")))
+                                (org-string-nw-p raw-str))))
+               ;; Named arguments.
+               (named-args (unless pos-args
+                             (org-string-nw-p (org-html--make-attribute-string attr-sc))))
+               (sc-args (or pos-args named-args))
+               (sc-args (if sc-args
+                            (concat " " sc-args " ")
+                          " "))
+               (matched-sc-str (car
+                                (cl-member block-type paired-shortcodes
+                                           :test (lambda (b sc) ;`sc' would be an element from `paired-shortcodes'
+                                                   (string-match-p (format sc-regexp b) sc)))))
+               (sc-open-char (if (string-prefix-p "%" matched-sc-str)
+                                 "%"
+                               "<"))
+               (sc-close-char (if (string-prefix-p "%" matched-sc-str)
+                                  "%"
+                                ">"))
+               (sc-begin (format "{{%s %s%s%s}}"
+                                 sc-open-char block-type sc-args sc-close-char))
+               (sc-end (format "{{%s /%s %s}}"
+                               sc-open-char block-type sc-close-char)))
+          ;; (message "[ox-hugo-spl-blk DBG] attr-sc1: %s"
+          ;;          (org-element-property :attr_shortcode special-block))
+          ;; (message "[ox-hugo-spl-blk DBG] attr-sc: %s" attr-sc)
+          ;; (message "[ox-hugo-spl-blk DBG] pos-args: %s" pos-args)
+          ;; (message "[ox-hugo-spl-blk DBG] named-args: %s" named-args)
+          (format "%s\n%s\n%s"
+                  sc-begin contents sc-end)))
+       (t
+        (org-blackfriday-special-block special-block contents nil))))))
 
 
 
@@ -2724,7 +2767,6 @@ the Hugo front-matter."
 INFO is a plist used as a communication channel."
   ;; (message "[hugo front matter DBG] info: %S" (pp info))
   (let* ((fm-format (plist-get info :hugo-front-matter-format))
-         (title (org-entry-get (point) "ITEM")) ;Post title
          (author-list (and (plist-get info :with-author)
                            (let ((author-raw
                                   (org-string-nw-p
@@ -2770,19 +2812,7 @@ INFO is a plist used as a communication channel."
          (outputs-raw (org-string-nw-p (plist-get info :hugo-outputs)))
          (outputs (when outputs-raw
                     (org-split-string outputs-raw " ")))
-         (todo-keyword (org-entry-get (point) "TODO"))
-         (draft (cond
-                 ((and todo-keyword
-                       (string= "TODO" todo-keyword))
-                  "true")
-                 ((and todo-keyword
-                       (string= "DRAFT" todo-keyword))
-                  (message "[ox-hugo] `%s' post is marked as a DRAFT" title)
-                  "true")
-                 ((org-hugo--plist-get-true-p info :hugo-draft)
-                  (org-hugo--front-matter-value-booleanize (org-hugo--plist-get-true-p info :hugo-draft)))
-                 (t
-                  "false")))
+         (draft (org-hugo--parse-draft-state info))
          (headless (when (org-hugo--plist-get-true-p info :hugo-headless)
                      (org-hugo--front-matter-value-booleanize (org-hugo--plist-get-true-p info :hugo-headless))))
          (all-t-and-c-str (org-entry-get (point) "ALLTAGS"))
@@ -2906,7 +2936,6 @@ INFO is a plist used as a communication channel."
                  (resources . ,resources)))
          (data `,(append data weight-data custom-fm-data)))
     ;; (message "[get fm DBG] tags: %s" tags)
-    ;; (message "dbg: todo-state: keyword=%S draft=%S" todo-keyword draft)
     ;; (message "dbg: hugo tags: %S" (plist-get info :hugo-tags))
     ;; (message "[get fm info DBG] %S" info)
     ;; (message "[get fm blackfriday DBG] %S" blackfriday)
