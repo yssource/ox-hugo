@@ -75,11 +75,10 @@
 (require 'ox-blackfriday)
 (require 'ffap)                         ;For `ffap-url-regexp'
 (require 'ob-core)                      ;For `org-babel-parse-header-arguments'
+(declare-function org-hugo-pandoc-cite--parse-citations-maybe "ox-hugo-pandoc-cite")
 
 (defvar ffap-url-regexp)                ;Silence byte-compiler
 
-(define-obsolete-function-alias 'org-hugo-export-subtree-to-md 'org-hugo-export-wim-to-md "2017-11-30")
-(define-obsolete-function-alias 'org-hugo-export-subtree-to-md-after-save 'org-hugo-export-wim-to-md-after-save "2017-11-30")
 
 ;; Using the correct function for getting inherited Org tags.
 ;; Starting Org 9.2, `org-get-tags' returns all the inherited tags
@@ -104,39 +103,18 @@ It holds the value returned by
   "Variable to count of number of subtrees getting exported.
 This variable is used when exporting all subtrees in a file.")
 
-(defvar org-hugo--section nil
-  "Variable to store the current valid Hugo subtree section name.
-If the EXPORT_HUGO_SECTION property is set in the same subtree as
-the post subtree, it somehow cannot be parsed from
-`org-hugo-export-to-md'.  But that property can be accessed
-within `org-hugo-export-wim-to-md' regardless.  This variable
-helps set the section path correctly for such cases (where
-EXPORT_HUGO_SECTION and EXPORT_FILE_NAME are set in the same
-subtree).")
+(defvar org-hugo--fm nil
+  "Variable to store the current Hugo post's front-matter string.
 
-(defvar org-hugo--bundle nil
-  "Variable to store the current valid Hugo subtree bundle name.
-If the EXPORT_HUGO_BUNDLE property is set in the same subtree as
-the post subtree, it somehow cannot be parsed from
-`org-hugo-export-to-md'.  But that property can be accessed
-within `org-hugo-export-wim-to-md' regardless.  This variable
-helps set the bundle path correctly for such cases (where
-EXPORT_HUGO_BUNDLE and EXPORT_FILE_NAME are set in the same
-subtree).")
+This variable is used to cache the original ox-hugo generated
+front-matter that's used after Pandoc Citation parsing.")
 
-(defvar org-hugo-allow-export-after-save t
-  "Enable flag for `org-hugo-export-wim-to-md-after-save'.
-When nil, the above function will not export the Org file to
-Hugo-compatible Markdown.
+(defvar org-hugo--fm-yaml nil
+  "Variable to store the current Hugo post's front-matter string in YAML format.
 
-This variable is usually set to nil by the user in
-`org-capture-before-finalize-hook' and set to t again in
-`org-capture-after-finalize-hook', so that the export does not
-happen as soon as a new post is created using Org capture.
-
-Note that the export after save will not work until
-`org-hugo-export-wim-to-md-after-save' is added to the
-`after-save-hook' by the user.")
+Pandoc understands meta-data only in YAML format.  So when Pandoc
+Citations are enabled, Pandoc is handed over the file with this
+YAML front-matter.")
 
 (defvar org-hugo-blackfriday-options
   '("taskLists"
@@ -418,7 +396,7 @@ Examples:
   :version "25.2")
 
 (defcustom org-hugo-front-matter-format "toml"
-  "Format used to front matter.
+  "Front-matter format.
 This variable can be set to either \"toml\" or \"yaml\"."
   :group 'org-export-hugo
   :type '(choice
@@ -534,6 +512,28 @@ it is if `org-hugo-prefer-hyphen-in-tags' is nil."
   :group 'org-export-hugo
   :type 'boolean
   :safe #'booleanp)
+
+(defcustom org-hugo-suppress-lastmod-period 0.0
+  "Suppressing period (in seconds) for adding the lastmod front-matter.
+
+The suppressing period is calculated as a delta between the
+\"date\" and auto-calculated \"lastmod\" values.  This value can
+be 0.0 or a positive float.
+
+The default value is 0.0 (seconds), which means that the lastmod
+parameter will be added to front-matter even if the post is
+modified within just 0.1 seconds after the initial creation of
+it (when the \"date\" is set).
+
+If the value is 86400.0, the lastmod parameter will not be added
+to the front-matter within 24 hours from the initial exporting.
+
+This variable is effective only if auto-setting of the
+\"lastmod\" parameter is enabled i.e. if
+`org-hugo-auto-set-lastmod' or `EXPORT_HUGO_AUTO_SET_LASTMOD' is
+non-nil."
+  :group 'org-export-hugo
+  :type 'float)
 
 (defcustom org-hugo-export-with-toc nil
   "When non-nil, Markdown format TOC will be inserted.
@@ -781,8 +781,10 @@ newer."
                    (:hugo-front-matter-key-replace "HUGO_FRONT_MATTER_KEY_REPLACE" nil nil space)
                    (:hugo-date-format "HUGO_DATE_FORMAT" nil org-hugo-date-format)
                    (:hugo-paired-shortcodes "HUGO_PAIRED_SHORTCODES" nil org-hugo-paired-shortcodes space)
+                   (:hugo-pandoc-citations "HUGO_PANDOC_CITATIONS" nil nil)
+                   (:bibliography "BIBLIOGRAPHY" nil nil newline) ;Used in ox-hugo-pandoc-cite
 
-                   ;; Front matter variables
+                   ;; Front-matter variables
                    ;; https://gohugo.io/content-management/front-matter/#front-matter-variables
                    ;; aliases
                    (:hugo-aliases "HUGO_ALIASES" nil nil space)
@@ -861,6 +863,24 @@ newer."
 
 ;;; Miscellaneous Helper Functions
 
+;;;; Check if a value is non-nil
+(defun org-hugo--value-get-true-p (value)
+  "Return non-nil if VALUE is non-nil.
+Return nil if VALUE is nil, \"nil\" or \"\"."
+  (cond
+   ((or (equal t value)
+        (equal nil value))
+    value)
+   ((and (stringp value)
+         (string= value "nil"))
+    nil)
+   (t
+    ;; "" -> nil
+    ;; "t" -> "t"
+    ;; "anything else" -> "anything else"
+    ;; 123 -> nil
+    (org-string-nw-p value))))
+
 ;;;; Check if a boolean plist value is non-nil
 (defun org-hugo--plist-get-true-p (info key)
   "Return non-nil if KEY in INFO is non-nil.
@@ -872,19 +892,7 @@ are expected to hold a boolean value.
 INFO is a plist used as a communication channel."
   (let ((value (plist-get info key)))
     ;; (message "dbg: org-hugo--plist-get-true-p:: key:%S value:%S" key value)
-    (cond
-     ((or (equal t value)
-          (equal nil value))
-      value)
-     ((and (stringp value)
-           (string= value "nil"))
-      nil)
-     (t
-      ;; "" -> nil
-      ;; "t" -> "t"
-      ;; "anything else" -> "anything else"
-      ;; 123 -> nil
-      (org-string-nw-p value)))))
+    (org-hugo--value-get-true-p value)))
 
 ;;;; Workaround to retain the :hl_lines parameter in src-block headers post `org-babel-exp-code'
 ;; http://lists.gnu.org/archive/html/emacs-orgmode/2017-10/msg00300.html
@@ -947,17 +955,27 @@ This is an internal function."
     (setq org-hugo--subtree-coord nil))
   (advice-add 'org-babel-exp-code :around #'org-hugo--org-babel-exp-code))
 
-(defun org-hugo--after-export-function ()
+(defun org-hugo--after-export-function (info outfile)
   "Function to be run after an ox-hugo export.
 
 This function is called in the very end of
 `org-hugo-export-to-md', `org-hugo-export-as-md' and
 `org-hugo-publish-to-md'.
 
+INFO is a plist used as a communication channel.
+
+OUTFILE is the Org exported file name.
+
 This is an internal function."
-  (setq org-hugo--section nil)
-  (setq org-hugo--bundle nil)
-  (advice-remove 'org-babel-exp-code #'org-hugo--org-babel-exp-code))
+  (advice-remove 'org-babel-exp-code #'org-hugo--org-babel-exp-code)
+  (when (and outfile
+             (org-hugo--pandoc-citations-enabled-p info))
+    (require 'ox-hugo-pandoc-cite)
+    (plist-put info :outfile outfile)
+    (plist-put info :front-matter org-hugo--fm)
+    (org-hugo-pandoc-cite--parse-citations-maybe info))
+  (setq org-hugo--fm nil)
+  (setq org-hugo--fm-yaml nil))
 
 ;;;; HTMLized section number for headline
 (defun org-hugo--get-headline-number (headline info &optional toc)
@@ -995,12 +1013,26 @@ When optional argument LOCAL is non-nil, build a table of
 contents according to the current headline."
   (let* ((toc-headline
           (unless local
-            (format "\n<div class=\"heading\">%s</div>\n\n"
+            (format "\n<div class=\"heading\">%s</div>\n"
                     (org-html--translate "Table of Contents" info))))
+         (current-level nil)
          (toc-items
           (mapconcat
            (lambda (headline)
-             (let* ((level (org-export-get-relative-level headline info))
+             (let* ((level-raw (org-export-get-relative-level headline info))
+                    (level (if local
+                               (let* ((current-level-inner
+                                       (progn
+                                         (unless current-level
+                                           (setq current-level level-raw))
+                                         current-level))
+                                      (relative-level
+                                       (1+ (- level-raw current-level-inner))))
+                                 ;; (message (concat "[ox-hugo build-toc DBG] "
+                                 ;;                  "current-level-inner:%d relative-level:%d")
+                                 ;;          current-level-inner relative-level)
+                                 relative-level)
+                             level-raw))
                     (indentation (make-string (* 4 (1- level)) ?\s))
                     (todo (and (org-hugo--plist-get-true-p info :with-todo-keywords)
                                (org-element-property :todo-keyword headline)))
@@ -1021,9 +1053,7 @@ contents according to the current headline."
                               (org-export-toc-entry-backend 'hugo)
                               info)
                              (or (org-element-property :CUSTOM_ID headline)
-                                 (org-hugo-slug title)
-                                 ;; (org-export-get-reference headline info)
-                                 )))
+                                 (org-hugo-slug title))))
                     (tags (and (plist-get info :with-tags)
                                (not (eq 'not-in-toc (plist-get info :with-tags)))
                                (let ((tags (org-export-get-tags headline info)))
@@ -1031,6 +1061,7 @@ contents according to the current headline."
                                       (format ":%s:"
                                               (mapconcat #'identity tags ":")))))))
                ;; (message "[ox-hugo build-toc DBG] level:%d, number:%s" level number)
+               ;; (message "[ox-hugo build-toc DBG] indentation: %S" indentation)
                ;; (message "[ox-hugo build-toc DBG] todo: %s | %s" todo todo-str)
                (concat indentation "- " number toc-entry tags)))
            (org-export-collect-headlines info n (and local keyword))
@@ -1050,9 +1081,13 @@ contents according to the current headline."
                         "    list-style: none;\n"
                         "  }\n"
                         "</style>\n"))
-              "<div class=\"ox-hugo-toc toc\">\n" ;This is a nasty workaround
-              "<div></div>\n"        ;till Hugo/Blackfriday support
-              toc-headline           ;wrapping Markdown in HTML div's.
+              (format "<div class=\"ox-hugo-toc toc%s\">\n"
+                      (if local
+                          " local"
+                        ""))
+              "<div></div>\n" ;This is a nasty workaround till Hugo/Blackfriday support
+              toc-headline    ;wrapping Markdown in HTML div's.
+              "\n"
               toc-items ;https://github.com/kaushalmodi/ox-hugo/issues/93
               "\n\n"
               "</div>\n"
@@ -1209,20 +1244,40 @@ INFO is a plist used as a communication channel."
                        (file-name-as-directory (plist-get info :hugo-base-dir))
                      (user-error "It is mandatory to set the HUGO_BASE_DIR property")))
          (content-dir "content/")
-         (section-name (or org-hugo--section ;Hugo section set in the post subtree gets higher precedence
-                           (plist-get info :hugo-section)))
-         (section-dir (if section-name
-                          (file-name-as-directory section-name)
-                        (user-error "It is mandatory to set the HUGO_SECTION property")))
-         (bundle-name (or org-hugo--bundle ;Hugo bundle set in the post subtree gets higher precedence
-                          (plist-get info :hugo-bundle)))
-         (bundle-dir (if bundle-name
-                         (file-name-as-directory bundle-name)
-                       ""))
-         (pub-dir (let ((dir (concat base-dir content-dir section-dir bundle-dir)))
+         (section-path (org-hugo--get-section-path info))
+         (bundle-dir (let ((bundle-path (or ;Hugo bundle set in the post subtree gets higher precedence
+                                         (org-hugo--entry-get-concat nil "EXPORT_HUGO_BUNDLE" "/")
+                                         (plist-get info :hugo-bundle)))) ;This is mainly to support per-file flow
+                       (if bundle-path
+                           (file-name-as-directory bundle-path)
+                         "")))
+         (pub-dir (let ((dir (concat base-dir content-dir section-path bundle-dir)))
                     (make-directory dir :parents) ;Create the directory if it does not exist
                     dir)))
     (file-truename pub-dir)))
+
+;;;; Get the publish date for the current post
+(defun org-hugo--get-date (info fmt)
+  "Return current post's publish date as a string.
+
+1. If the point is in an Org subtree which has the `CLOSED' property
+   set (usually generated automatically when switching a headline's
+   TODO state to \"DONE\"), get the `CLOSED' time stamp.
+
+2. If that's not the case, but the subtree has the `EXPORT_DATE'
+   property set, use the date from that.
+
+3. Else, try to get the date from the \"#+date\" keyword in the Org
+   file, and format it using the time format string FMT.  If this
+   keyword is not set either, return nil.
+
+INFO is a plist used as a communication channel."
+  (or
+   (org-entry-get (point) "CLOSED")
+   (org-string-nw-p
+    (org-export-data (plist-get info :date) info)) ;`org-export-data' required
+   (org-string-nw-p
+    (org-export-get-date info fmt))))
 
 ;;;; Format Dates
 (defun org-hugo--format-date (date-key info)
@@ -1241,19 +1296,7 @@ cannot be formatted in Hugo-compatible format."
                     ((equal date-key :date)
                      ;; (message "[ox-hugo date DBG] 1 %s" (plist-get info date-key))
                      ;; (message "[ox-hugo date DBG] 2 %s" (org-export-data (plist-get info date-key) info))
-                     (or
-                      ;; Get the date from the "CLOSED" property;
-                      ;; generated automatically when switching a
-                      ;; headline to "DONE" state,
-                      (org-entry-get (point) "CLOSED")
-                      ;; Else get the date from the subtree property,
-                      ;; `EXPORT_DATE' if available,
-                      (org-string-nw-p
-                       (org-export-data (plist-get info date-key) info)) ;`org-export-data' required
-                      ;; Else try to get it from the #+date keyword in
-                      ;; the Org file.
-                      (org-string-nw-p
-                       (org-export-get-date info date-fmt))))
+                     (org-hugo--get-date info date-fmt))
                     ((and (equal date-key :hugo-publishdate)
                           (org-entry-get (point) "SCHEDULED"))
                      ;; Get the date from the "SCHEDULED" property.
@@ -1295,7 +1338,38 @@ cannot be formatted in Hugo-compatible format."
                         ;; lastmod field.
                         ((and (equal date-key :hugo-lastmod)
                               (org-hugo--plist-get-true-p info :hugo-auto-set-lastmod))
-                         (format-time-string date-fmt (org-current-time)))
+                         (let* ((curr-time (org-current-time))
+                                (lastmod-str (format-time-string date-fmt curr-time)))
+                           ;; (message "[ox-hugo suppress-lastmod] current-time = %S (decoded = %S)"
+                           ;;          curr-time (decode-time curr-time))
+                           ;; (message "[ox-hugo suppress-lastmod] lastmod-str = %S"
+                           ;;          lastmod-str )
+                           (if (= 0.0 org-hugo-suppress-lastmod-period)
+                               (progn
+                                 ;; (message "[ox-hugo suppress-lastmod] not suppressed")
+                                 lastmod-str)
+                             (let ((date-str (org-string-nw-p (org-hugo--get-date info date-fmt))))
+                               ;; (message "[ox-hugo suppress-lastmod] date-str = %S"
+                               ;;          date-str)
+                               (when date-str
+                                 (let* ((date-time (apply #'encode-time
+                                                          (mapcar (lambda (el) (or el 0))
+                                                                  (parse-time-string date-str))))
+                                        ;; It's safe to assume that
+                                        ;; `current-time' will always
+                                        ;; be >= the post date.
+                                        (delta (float-time
+                                                (time-subtract curr-time date-time)))
+                                        (suppress-period (if (< 0.0 org-hugo-suppress-lastmod-period)
+                                                             org-hugo-suppress-lastmod-period
+                                                           (- org-hugo-suppress-lastmod-period))))
+                                   ;; (message "[ox-hugo suppress-lastmod] date-time = %S (decoded = %S)"
+                                   ;;          date-time (decode-time date-time))
+                                   ;; (message "[ox-hugo suppress-lastmod] delta = %S" delta)
+                                   ;; (message "[ox-hugo suppress-lastmod] suppress-period = %S"
+                                   ;;          suppress-period)
+                                   (when (>= delta suppress-period)
+                                     lastmod-str)))))))
                         ;; Else.. do nothing.
                         (t
                          nil)))
@@ -1323,6 +1397,9 @@ set appropriately.
 The replacement syntax is:
 
     #+hugo_front_matter_key_replace: oldkey>newkey
+
+If newkey is a special string \"nil\", oldkey will be removed
+from the front-matter.
 
 You can also do multiple key replacements:
 
@@ -1373,8 +1450,16 @@ INFO is a plist used as a communication channel."
                 (key-repl (cdr repl)))
             (let ((found-key-cell (assoc key-orig data)))
               (when found-key-cell
-                ;; https://emacs.stackexchange.com/a/3398/115
-                (setf (car found-key-cell) key-repl)))))))
+                ;; (message "[ox-hugo replace-key found-key-cell DBG] %S" found-key-cell)
+                ;; (message "[ox-hugo replace-key key-orig DBG] %S" key-orig)
+                ;; (message "[ox-hugo replace-key key-repl DBG] %S" key-repl)
+                (if (string= "nil" key-repl)
+                    ;; Setting value of a front-matter key to nil will
+                    ;; cause that key to be removed during export.
+                    ;; See `org-hugo--gen-front-matter'.
+                    (setf (cdr found-key-cell) nil)
+                  ;; https://emacs.stackexchange.com/a/3398/115
+                  (setf (car found-key-cell) key-repl))))))))
     data))
 
 ;;;; TODO keywords
@@ -1438,6 +1523,101 @@ INFO is a plist used as a communication channel."
     ;; (message "dbg: draft-state: todo keyword=%S HUGO_DRAFT=%S draft=%S"
     ;;          todo-keyword (plist-get info :hugo-draft) draft-bool-str)
     draft-bool-str))
+
+;;;; Check if Pandoc Citations parsing is needed
+(defun org-hugo--pandoc-citations-enabled-p (info)
+  "Return non-nil if Pandoc Citation parsing is enabled.
+
+INFO is a plist used as a communication channel."
+  (let* ((pandoc-citations-enabled--prop-val
+          (org-entry-get nil "EXPORT_HUGO_PANDOC_CITATIONS" :inherit :literal-nil))
+         (pandoc-citations-enabled--plist-val
+          (org-hugo--plist-get-true-p info :hugo-pandoc-citations))
+         (pandoc-enabled (or pandoc-citations-enabled--prop-val
+                             pandoc-citations-enabled--plist-val))
+         (pandoc-enabled-bool (org-hugo--value-get-true-p pandoc-enabled)))
+    ;; (message "[ox-hugo DBG pandoc-citations-enabled--prop-val] %S" pandoc-citations-enabled--prop-val)
+    ;; (message "[ox-hugo DBG pandoc-citations-enabled--plist-val] %S" pandoc-citations-enabled--plist-val)
+    ;; (message "[ox-hugo DBG pandoc-enabled-bool] %S" pandoc-enabled-bool)
+    pandoc-enabled-bool))
+
+;;;; Get a property value and concat it with its parent value
+(defun org-hugo--entry-get-concat (pom property &optional sep)
+  "Concatenate an Org Property value with its inherited value.
+
+Get value of PROPERTY for entry or content at point-or-marker
+POM.  If a parent subtree has the same PROPERTY set, append the
+current property value to that, following the optional SEP.
+
+SEP is the concatenation separator string.  If it is nil, it
+defaults to \"\".
+
+This function internally calls `org-entry-get' with its INHERIT
+argument set to non-nil and the LITERAL-NIL argument set to nil.
+
+If the property is present but empty, the return value is the
+empty string.  If the property is not present at all, nil is
+returned.  In any other case, return the value as a string.
+Search is case-insensitive."
+  (let ((sep (or sep ""))
+        (value-no-concat (org-entry-get pom property :inherit)))
+    ;; (message "[ox-hugo section concat DBG] value-no-concat: %S" value-no-concat)
+    (if value-no-concat
+        ;; Get the value of PROPERTY from the parent relative to
+        ;; current point.
+        (let ((value-here-no-inherit (org-entry-get pom property nil))
+              (value-parent (org-with-wide-buffer
+                             (when (org-up-heading-safe)
+                               (org-hugo--entry-get-concat nil property sep)))))
+          ;; (message "[ox-hugo section concat DBG] value-here-no-inherit: %S" value-here-no-inherit)
+          ;; (message "[ox-hugo section concat DBG] value-parent: %S" value-parent)
+          (if value-here-no-inherit
+              (format "%s%s%s"
+                      (or value-parent "")
+                      (if value-parent
+                          (if (and (org-string-nw-p sep)
+                                   (string-suffix-p sep value-parent))
+                              "" ;Don't add the `sep' if `value-parent' already ends with that `sep'
+                            sep)
+                        "")
+                      value-no-concat)
+            ;; Use the value from parent directly if the property is not
+            ;; set in the current subtree.
+            value-parent))
+      nil)))
+
+(defun org-hugo--get-section-path (info)
+  "Return the Hugo section path.
+This is the path relative to the Hugo \"content\" directory.
+
+If the EXPORT_HUGO_SECTION* keyword is set in the current or a
+parent subtree, return the concatenation of the \"HUGO_SECTION\"
+and the concatenated \"EXPORT_HUGO_SECTION*\" values as a path.
+
+Else, return the \"HUGO_SECTION\" path.
+
+The function always returns a string.
+
+INFO is a plist used as a communication channel."
+  (let* ((hugo-section-prop (org-entry-get nil "EXPORT_HUGO_SECTION" :inherit))
+         (hugo-section-kwd (plist-get info :hugo-section))
+         (hugo-section-frag-prop (org-entry-get nil "EXPORT_HUGO_SECTION*" :inherit))
+         (section-path-1 (or hugo-section-prop ;EXPORT_HUGO_SECTION gets higher precedence
+                             hugo-section-kwd)) ;This is mainly to support per-file flow
+         section-path)
+    ;; (message "[ox-hugo section-path DBG] hugo-section-prop: %S" hugo-section-prop)
+    ;; (message "[ox-hugo section-path DBG] hugo-section-kwd: %S" hugo-section-kwd)
+    ;; (message "[ox-hugo section-path DBG] hugo-section-frag-prop: %S" hugo-section-frag-prop)
+    ;; (message "[ox-hugo section-path DBG] section path-1: %S" section-path-1)
+    (unless section-path-1
+      (user-error "It is mandatory to set the HUGO_SECTION property"))
+    (when (org-string-nw-p hugo-section-frag-prop)
+      (setq section-path-1
+            (concat (file-name-as-directory section-path-1) ;Add trailing slash if absent
+                    (org-hugo--entry-get-concat nil "EXPORT_HUGO_SECTION*" "/"))))
+    (setq section-path (file-name-as-directory section-path-1))
+    ;; (message "[ox-hugo section-path DBG] section path: %S" section-path)
+    section-path))
 
 
 
@@ -1577,9 +1757,7 @@ a communication channel."
        (t
         (let ((anchor (format "{#%s}" ;https://gohugo.io/extras/crossreferences/
                               (or (org-element-property :CUSTOM_ID headline)
-                                  (org-hugo-slug title)
-                                  ;; (org-export-get-reference headline info)
-                                  )))
+                                  (org-hugo-slug title))))
               (loffset (string-to-number (plist-get info :hugo-level-offset))) ;"" -> 0, "0" -> 0, "1" -> 1, ..
               (todo (when todo
                       (concat (org-hugo--todo todo info) " "))))
@@ -1589,23 +1767,34 @@ a communication channel."
 ;;;;; Headline Helpers
 ;;;###autoload
 (defun org-hugo-slug (str)
-  "Return a slug string for STR.
-STR is in Markdown format, most likely a Markdown heading.  The
-returned slug string has the following specification:
+  "Convert string STR to a `slug' and return that string.
 
-- Should contain only lower case alphabet, number and hyphen
-  characters.
-- Remove *any* HTML tag like \"<code>..</code>\", \"<span
-  class=..>..</span>\", etc from STR if present.
-- URLs if present in STR should be removed.
-- Replace \".\" in STR with \"and\", and \"&\" with \"and\".
-- Parentheses should be replaced with double-hyphens ( \"foo (bar)
-  baz\" becomes \"foo--bar--baz\").
-- One or more consecutive spaces should be replaced with a single
-  hyphen.
-- Maximum number of consecutive hyphens allowed is two.
-- No hyphens should be present at the leading or trailing end of the
-  returned string ."
+A `slug' is the part of a URL which identifies a particular page
+on a website in an easy to read form.
+
+Example: If STR is \"My First Post\", it will be converted to a
+slug \"my-first-post\", which can become part of an easy to read
+URL like \"https://example.com/posts/my-first-post/\".
+
+In general, STR is a string.  But it can also be a string with
+Markdown markup as that string passed to this function is often
+the sub-headings of a post (which can contain bold, italics,
+link, etc markup).
+
+The `slug' generated from that STR follows these rules:
+
+- Contain only lower case alphabet, number and hyphen characters
+  ([[:alnum:]-]).
+- Not have *any* HTML tag like \"<code>..</code>\",
+  \"<span class=..>..</span>\", etc.
+- Not contain any URLs (if STR happens to be a Markdown link).
+- Replace \".\" in STR with \"dot\", and \"&\" with \"and\".
+- Replace parentheses with double-hyphens.  So \"foo (bar) baz\"
+  becomes \"foo--bar--baz\".
+- Replace non [[:alnum:]-] chars with spaces, and then one or
+  more consecutive spaces with a single hyphen.
+- At most two consecutive hyphens are allowed.
+- No hyphens allowed at the leading or trailing end of the slug."
   (let* (;; All lower-case
          (str (downcase str))
          ;; Remove "<FOO>..</FOO>" HTML tags if present.
@@ -1776,9 +1965,7 @@ and rewrite link paths to make blogging more seamless."
                      title))
               ;; Reference
               (or (org-element-property :CUSTOM_ID destination)
-                  (org-hugo-slug title)
-                  ;; (org-export-get-reference destination info)
-                  ))))
+                  (org-hugo-slug title)))))
           (_
            (let ((description
                   (or (org-string-nw-p desc)
@@ -1796,7 +1983,9 @@ and rewrite link paths to make blogging more seamless."
              (when description
                (format "[%s](#%s)"
                        description
-                       (org-export-get-reference destination info))))))))
+                       (if (memq (org-element-type destination) '(src-block table))
+                           (org-blackfriday--get-reference destination info)
+                         (org-export-get-reference destination info)))))))))
      ((org-export-inline-image-p link org-html-inline-image-rules)
       ;; (message "[ox-hugo-link DBG] Inline image: %s" raw-path)
       ;; (message "[org-hugo-link DBG] processing an image: %s" desc)
@@ -1837,7 +2026,9 @@ and rewrite link paths to make blogging more seamless."
                                          useful-parent info
                                          nil #'org-html--has-caption-p))
                                 " "     ;" </span>"
-                                caption))))
+                                ;; Escape the double-quotes, if any,
+                                ;; present in the caption.
+                                (replace-regexp-in-string "\"" "\\\\\"" caption)))))
         ;; (message "[ox-hugo-link DBG] inline image? %s\npath: %s"
         ;;          inline-image path)
         ;; (message "[org-hugo-link DBG] attr: %s num of attr: %d"
@@ -2199,31 +2390,33 @@ channel."
                      (replace-regexp-in-string "," " " hl-lines)) ;"1,3-4" -> "1 3-4"
                     ((numberp hl-lines)
                      (number-to-string hl-lines))))
-         (label (let ((lbl (and (org-element-property :name src-block)
-                                (org-export-get-reference src-block info))))
-                  (if lbl
-                      (format "<a id=\"%s\"></a>\n" lbl)
-                    "")))
+         (src-ref (org-blackfriday--get-reference src-block info))
+         (src-anchor (if src-ref
+                         (format "<a id=\"%s\"></a>\n" src-ref)
+                       ""))
          (caption (org-export-get-caption src-block))
          (caption-html (if (not caption)
                            ""
                          (let* ((src-block-num (org-export-get-ordinal
                                                 src-block info
                                                 nil #'org-html--has-caption-p))
-                                (caption-prefix (let* ((fmt-str (org-html--translate "Listing %d:" info))
-                                                       (fmt-str (or (and (string= fmt-str "Listing %d:")
-                                                                         "Code Snippet %d:")
-                                                                    fmt-str)))
-                                                  (format fmt-str src-block-num)))
+                                (caption-prefix (let ((str-translated (org-html--translate "Listing" info)))
+                                                  (if (string= str-translated "Listing")
+                                                      "Code Snippet"
+                                                    str-translated)))
                                 (caption-str
                                  (org-html-convert-special-strings ;Interpret em-dash, en-dash, etc.
                                   (org-export-data-with-backend caption 'html info))))
-
                            (format (concat "\n\n<div class=\"src-block-caption\">\n"
-                                           "  <span class=\"src-block-number\">%s</span>\n"
+                                           "  <span class=\"src-block-number\">%s</span>:\n"
                                            "  %s\n"
                                            "</div>")
-                                   caption-prefix caption-str))))
+                                   (if src-ref ;Hyperlink the code snippet prefix + number
+                                       (format "<a href=\"#%s\">%s %s</a>"
+                                               src-ref caption-prefix src-block-num)
+                                     (format "%s %s"
+                                             caption-prefix src-block-num))
+                                   caption-str))))
          content
          ret)
     ;; (message "ox-hugo src [dbg] number-lines: %S" number-lines)
@@ -2290,7 +2483,7 @@ channel."
                       lang
                       (format highlight-args-str linenos-str hllines-str)
                       code)))))
-    (setq ret (concat label content caption-html))
+    (setq ret (concat src-anchor content caption-html))
     (setq ret (org-blackfriday--div-wrap-maybe src-block ret))
     ret))
 
@@ -2386,7 +2579,7 @@ INFO is a plist holding export options."
 
 ;;;; Body Filter
 (defun org-hugo-body-filter (body _backend info)
-  "Add front matter to the BODY of the document.
+  "Add front-matter to the BODY of the document.
 
 BODY is the result of the export.
 INFO is a plist holding export options."
@@ -2426,9 +2619,12 @@ INFO is a plist holding export options."
         (body (if (org-string-nw-p body) ;Insert extra newline if body is non-empty
                   (format "\n%s" body)
                 "")))
-    (format "%s%s%s" fm body org-hugo-footer)))
+    (setq org-hugo--fm fm)
+    (if (org-hugo--pandoc-citations-enabled-p info)
+        (format "%s%s%s" org-hugo--fm-yaml body org-hugo-footer)
+      (format "%s%s%s" fm body org-hugo-footer))))
 
-;;;;; Hugo Front Matter
+;;;;; Hugo Front-Matter
 (defun org-hugo--quote-string (val &optional prefer-no-quotes format)
   "Wrap VAL with quotes as appropriate.
 
@@ -2471,11 +2667,14 @@ Optional argument FORMAT can be \"toml\" or \"yaml\"."
             ;; "10040216507682529280" that needs more than 64 bits to
             ;; be stored as a signed integer, it will be automatically
             ;; stored as a float.  So (integerp (string-to-number
-            ;; val)) will return nil.
+            ;; val)) will return nil [or `fixnump' instead of
+            ;; `integerp' in Emacs 27 or newer]
             ;; https://github.com/toml-lang/toml#integer Integer
             ;; examples: 7, +7, -7, 7_000
             (and (string-match-p "\\`[+-]?[[:digit:]_]+\\'" val)
-                 (integerp (string-to-number val)))
+                 (if (functionp #'fixnump) ;`fixnump' and `bignump' get introduced in Emacs 27.x
+                     (fixnump (string-to-number val))
+                   (integerp (string-to-number val)))) ;On older Emacsen, `integerp' behaved the same as the new `fixnump'
             (string= "true" val)
             (string= "false" val)
             ;; or if it is a date (date, publishDate, expiryDate, lastmod)
@@ -2762,10 +2961,10 @@ the Hugo front-matter."
        (string-match-p "\\`@" tag)))
 
 (defun org-hugo--get-front-matter (info)
-  "Return the Hugo front matter string.
+  "Return the Hugo front-matter string.
 
 INFO is a plist used as a communication channel."
-  ;; (message "[hugo front matter DBG] info: %S" (pp info))
+  ;; (message "[hugo front-matter DBG] info: %S" (pp info))
   (let* ((fm-format (plist-get info :hugo-front-matter-format))
          (author-list (and (plist-get info :with-author)
                            (let ((author-raw
@@ -2902,7 +3101,7 @@ INFO is a plist used as a communication channel."
          (resources (org-hugo--get-resources-alist
                      (org-hugo--parse-property-arguments (plist-get info :hugo-resources))))
          (blackfriday (org-hugo--parse-blackfriday-prop-to-alist (plist-get info :hugo-blackfriday)))
-         (data `(;; The order of the elements below will be the order in which the front matter
+         (data `(;; The order of the elements below will be the order in which the front-matter
                  ;; variables will be ordered.
                  (title . ,(org-hugo--sanitize-title info))
                  (audio . ,(plist-get info :hugo-audio))
@@ -2934,7 +3133,8 @@ INFO is a plist used as a communication channel."
                  (blackfriday . ,blackfriday)
                  (menu . ,menu-alist)
                  (resources . ,resources)))
-         (data `,(append data weight-data custom-fm-data)))
+         (data `,(append data weight-data custom-fm-data))
+         ret)
     ;; (message "[get fm DBG] tags: %s" tags)
     ;; (message "dbg: hugo tags: %S" (plist-get info :hugo-tags))
     ;; (message "[get fm info DBG] %S" info)
@@ -2948,7 +3148,15 @@ INFO is a plist used as a communication channel."
     ;; (message "[fm categories DBG] %S" categories)
     ;; (message "[fm keywords DBG] %S" keywords)
     (setq data (org-hugo--replace-keys-maybe data info))
-    (org-hugo--gen-front-matter data fm-format)))
+    (setq ret (org-hugo--gen-front-matter data fm-format))
+    (if (and (string= "toml" fm-format)
+             (org-hugo--pandoc-citations-enabled-p info))
+        ;; Pandoc parses fields like csl and nocite from YAML
+        ;; front-matter.  So create the `org-hugo--fm-yaml'
+        ;; front-matter in YAML format just for Pandoc.
+        (setq org-hugo--fm-yaml (org-hugo--gen-front-matter data "yaml"))
+      (setq org-hugo--fm-yaml ret))
+    ret))
 
 (defun org-hugo--calc-weight ()
   "Calculate the weight for a Hugo post or menu item.
@@ -2961,12 +3169,12 @@ LEVEL."
     (+ (* 1000 level) index)))
 
 (defun org-hugo--gen-front-matter (data format)
-  "Generate the Hugo post front matter, and return that string.
+  "Generate the Hugo post front-matter, and return that string.
 
 DATA is an alist of the form \((KEY1 . VAL1) (KEY2 . VAL2) .. \),
 where KEY is a symbol and VAL is a string.
 
-Generate the front matter in the specified FORMAT.  Valid values
+Generate the front-matter in the specified FORMAT.  Valid values
 are \"toml\" and \"yaml\"."
   (let ((sep (cond ((string= format "toml") "+++\n")
                    ((string= format "yaml") "---\n")
@@ -2984,7 +3192,7 @@ are \"toml\" and \"yaml\"."
       (let ((key (symbol-name (car pair)))
             (value (cdr pair)))
         ;; (message "[hugo fm key value DBG] %S %S" key value)
-        (unless (or (null value) ;Skip writing front matter variables whose value is nil
+        (unless (or (null value) ;Skip writing front-matter variables whose value is nil
                     (and (stringp value) ;or an empty string.
                          (string= "" value)))
           ;; In TOML/YAML, the value portion needs to be wrapped in
@@ -2994,9 +3202,9 @@ are \"toml\" and \"yaml\"."
           ;; YAML example:
           ;;     title: "My Post"
 
-          ;; In TOML, the menu information in the front matter is as a
+          ;; In TOML, the menu information in the front-matter is as a
           ;; table. So it needs to be always added to the end of the
-          ;; front matter. So generate the `menu-string' separately
+          ;; front-matter. So generate the `menu-string' separately
           ;; and then append it to `front-matter' at the end.  Do the
           ;; same for blackfriday param values.
           (cond
@@ -3007,7 +3215,7 @@ are \"toml\" and \"yaml\"."
                                   "used to set its value.\n"
                                   "Usage examples: \":EXPORT_HUGO_MENU: :menu main\" or "
                                   "\"#+hugo_menu: :menu main\"")))
-            ;; Menu name needs to be non-nil to insert menu info in front matter.
+            ;; Menu name needs to be non-nil to insert menu info in front-matter.
             (when (assoc 'menu value)
               (let* ((menu-alist value)
                      ;; Menu entry string might need to be quoted if
@@ -3187,7 +3395,7 @@ are \"toml\" and \"yaml\"."
                                   key
                                   sign
                                   (cond (;; Tags, categories, keywords, aliases,
-                                         ;; custom front matter which are lists.
+                                         ;; custom front-matter which are lists.
                                          (listp value)
                                          (org-hugo--get-yaml-toml-list-string value))
                                         (t
@@ -3203,6 +3411,7 @@ are \"toml\" and \"yaml\"."
                      "HUGO_ALLOW_SPACES_IN_TAGS"
                      "HUGO_BLACKFRIDAY"
                      "HUGO_SECTION"
+                     "HUGO_SECTION*"
                      "HUGO_BUNDLE"
                      "HUGO_BASE_DIR"
                      "HUGO_CODE_FENCE"
@@ -3230,6 +3439,8 @@ are \"toml\" and \"yaml\"."
                      "HUGO_EXPIRYDATE"
                      "HUGO_LASTMOD"
                      "HUGO_SLUG" ;Useful for inheriting same slug to same posts in different languages
+                     "HUGO_PANDOC_CITATIONS"
+                     "BIBLIOGRAPHY"
                      "HUGO_AUTO_SET_LASTMOD")))
     (mapcar (lambda (str)
               (concat "EXPORT_" str))
@@ -3249,7 +3460,7 @@ will be moved in this case too."
   (catch 'break
     (while :infinite
       (let* ((entry (org-element-at-point))
-             (fname (org-element-property :EXPORT_FILE_NAME entry))
+             (fname (org-string-nw-p (org-element-property :EXPORT_FILE_NAME entry)))
              level)
         (when fname
           (throw 'break entry))
@@ -3334,11 +3545,16 @@ Return the buffer the export happened to."
   (interactive)
   (org-hugo--before-export-function subtreep)
   ;; Allow certain `ox-hugo' properties to be inherited.
-  (let ((org-use-property-inheritance (org-hugo--selective-property-inheritance)))
+  (let ((org-use-property-inheritance (org-hugo--selective-property-inheritance))
+        (info (org-combine-plists
+               (org-export--get-export-attributes
+                'hugo subtreep visible-only)
+               (org-export--get-buffer-attributes)
+               (org-export-get-environment 'hugo subtreep))))
     (prog1
         (org-export-to-buffer 'hugo "*Org Hugo Export*"
           async subtreep visible-only nil nil (lambda () (text-mode)))
-      (org-hugo--after-export-function))))
+      (org-hugo--after-export-function info nil))))
 
 ;;;###autoload
 (defun org-hugo-export-to-md (&optional async subtreep visible-only)
@@ -3396,7 +3612,7 @@ Return output file's name."
     (when do-export
       (prog1
           (org-export-to-file 'hugo outfile async subtreep visible-only)
-        (org-hugo--after-export-function)))))
+        (org-hugo--after-export-function info outfile)))))
 
 ;; FIXME: org-publish based exporting is not yet supported.
 ;; ;;;###autoload
@@ -3543,10 +3759,6 @@ approach)."
                                     (re-search-forward "^#\\+hugo_weight:.*auto" nil :noerror)))))
                           (setq org-hugo--subtree-coord
                                 (org-hugo--get-post-subtree-coordinates subtree)))
-                        ;; Get the current subtree section name if any.
-                        (setq org-hugo--section (org-entry-get nil "EXPORT_HUGO_SECTION" :inherit))
-                        ;; Get the current subtree bundle name if any.
-                        (setq org-hugo--bundle (org-entry-get nil "EXPORT_HUGO_BUNDLE" :inherit))
                         (setq do-export t)))))
                 ;; If not in a valid subtree, check if the Org file is
                 ;; supposed to be exported as a whole, in which case
@@ -3584,19 +3796,6 @@ approach)."
                               (format "%s: %s" f-or-b-name msg)))))))
               (when do-export
                 (org-hugo-export-to-md async subtree visible-only)))))))))
-
-;;;###autoload
-(defun org-hugo-export-wim-to-md-after-save ()
-  "Fn for `after-save-hook' to run `org-hugo-export-wim-to-md'.
-
-The export is also skipped if `org-hugo-allow-export-after-save'
-is nil.  This variable is intended to be toggled dynamically in
-`org-capture-before-finalize-hook' and
-`org-capture-after-finalize-hook' hooks.  See the ‘Auto-export on
-Saving’ section in this package's documentation for an example."
-  (save-excursion
-    (when org-hugo-allow-export-after-save
-      (org-hugo-export-wim-to-md))))
 
 ;;;###autoload
 (defun org-hugo-debug-info ()
@@ -3662,6 +3861,7 @@ buffer and returned as a string in Org format."
                                 ,(format "|org-hugo-date-format                                  |%S|" org-hugo-date-format)
                                 ,(format "|org-hugo-paired-shortcodes                            |%S|" org-hugo-paired-shortcodes)
                                 ,(format "|org-hugo-langs-no-descr-in-code-fences                |%S|" org-hugo-langs-no-descr-in-code-fences)
+                                ,(format "|org-hugo-suppress-lastmod-period                      |%S|" org-hugo-suppress-lastmod-period)
                                 ,(format "|org-hugo-front-matter-format                          |%S|" org-hugo-front-matter-format))
                               "\n"))
          (org-export-with-toc nil)

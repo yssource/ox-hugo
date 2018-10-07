@@ -1,9 +1,9 @@
-# Time-stamp: <2018-05-18 10:27:19 kmodi>
+# Makefile to export org documents to md for Hugo from the command
+# line.
+#
+# Run "make" to see the help for this Makefile.
 
-# Makefile to export org documents to md for Hugo from the command line
-# Run just "make" to see usage examples.
-
-MAKE_ := $(MAKE) --no-print-directory
+MAKE_ := $(MAKE) -j1 --no-print-directory
 
 EMACS ?= emacs
 EMACS_exists := $(shell command -v $(EMACS) 2> /dev/null)
@@ -14,12 +14,18 @@ endif
 # EMACS_BIN_SOURCE and EMACS_BIN_VERSION are used later in the vcheck rule
 # only if EMACS_exists has evaluated to "".
 EMACS_BIN_SOURCE ?= https://github.com/npostavs/emacs-travis/releases/download/bins
-EMACS_BIN_VERSION ?= 26
+EMACS_BIN_VERSION ?= 26.1
 
 HUGO ?= hugo
 HUGO_exists := $(shell command -v $(HUGO) 2> /dev/null)
 ifeq ("$(HUGO_exists)","")
 	HUGO := /tmp/hugo/bin/hugo
+endif
+
+HTMLTEST ?= htmltest
+HTMLTEST_exists := $(shell command -v $(HTMLTEST) 2> /dev/null)
+ifeq ("$(HTMLTEST_exists)","")
+	HTMLTEST := /tmp/htmltest/bin/htmltest
 endif
 
 # HUGO_BIN_SOURCE and HUGO_VERSION are used later in the vcheck rule
@@ -35,18 +41,15 @@ HUGO_BASE_DIR=./
 # Other hugo arguments
 HUGO_ARGS=
 
-# Set TIMEZONE to the TZ environment variable. If TZ is unset, Emacs
-# uses system wall clock time, which is a platform-dependent default
-# time zone --
-# https://www.gnu.org/software/emacs/manual/html_node/elisp/Time-Zone-Rules.html
-TIMEZONE=${TZ}
-
 # Port for hugo server
 PORT=1337
 
 # Directory where the required elisp packages are auto-installed
 TMPDIR ?= /tmp
 OX_HUGO_ELPA=$(TMPDIR)/$(USER)/ox-hugo-dev/
+
+# Below is set to 1 during "make test"
+TEST_ENABLED=0
 
 # ox-hugo test directory; also contains the setup-ox-hugo.el
 OX_HUGO_TEST_DIR=$(shell pwd)/test
@@ -73,13 +76,13 @@ test_check=1
 .PHONY: help emacs-batch md1 vcheck hugo hugo_doc hugo_test serve server diff \
 	test md testmkgold \
 	do_test $(test_org_files) \
-	doc_md doc_gh doc \
+	doc_md doc_gh doc doc_htmltest doc_test \
 	ctemp diffgolden clean
 
 help:
 	@echo "Help for command-line Org->Markdown for Hugo Exporter"
 	@echo "====================================================="
-	@echo " make test          <-- Run test with checks enabled"
+	@echo " make -j1 test      <-- Run test with checks enabled"
 	@echo " make md            <-- Only export the test Org files to Markdown, no checks"
 	@echo " make doc           <-- Build both Doc Site contents and GitHub docs"
 	@echo " make FOO.org       <-- Export the FOO.org file from content-org/ dir to Markdown file(s)"
@@ -105,11 +108,8 @@ emacs-batch:
 	@echo ""
 	@echo "$(ORG_FILE) ::"
 	@$(EMACS) --batch --eval "(progn\
-        (setq debug-ignored-errors (remq 'user-error debug-ignored-errors))\
-        (toggle-debug-on-error)\
 	(setenv \"OX_HUGO_ELPA\" \"$(OX_HUGO_ELPA)\")\
-	(when (> (length \"$(TIMEZONE)\") 0) (setenv \"TZ\" \"$(TIMEZONE)\"))\
-	(setq-default make-backup-files nil)\
+	(setenv \"TEST_ENABLED\" \"$(TEST_ENABLED)\")\
 	(load-file (expand-file-name \"setup-ox-hugo.el\" \"$(OX_HUGO_TEST_DIR)\"))\
 	)" $(ORG_FILE) \
 	-f $(FUNC) \
@@ -171,7 +171,7 @@ testmkgold:
 # https://stackoverflow.com/a/37748952/1219634
 do_test: $(test_org_files)
 $(test_org_files):
-	@$(MAKE_) md1 ORG_FILE=$@ TIMEZONE=UTC # Use UTC/Universal time zone for tests
+	@$(MAKE_) md1 ORG_FILE=$@ TEST_ENABLED=1
 ifeq ($(test_check),1)
 	@$(MAKE_) diffgolden
 endif
@@ -188,6 +188,16 @@ doc_gh:
 
 doc: doc_md hugo_doc doc_gh
 
+doc_htmltest:
+ifeq ("$(HTMLTEST_exists)","")
+	@mkdir -p /tmp/htmltest
+	@find /tmp/htmltest -maxdepth 1 -type d -name bin -exec rm -rf "{}" \;
+	@git clone $(HUGO_BIN_SOURCE) /tmp/htmltest/bin
+	@tar xf /tmp/htmltest/bin/htmltest_DEV-Linux-64bit.tar.xz -C /tmp/htmltest/bin
+endif
+	@cd doc && $(HTMLTEST)
+doc_test: doc doc_htmltest
+
 ctemp:
 	@find $(OX_HUGO_TEST_SITE_DIR)/content -name "*.*~" -delete
 	@find ./doc/content -name "*.*~" -delete
@@ -202,8 +212,8 @@ diffgolden:
 	@rm -rf $(OX_HUGO_TEST_SITE_DIR)/content-modified
 	@cp -rf $(OX_HUGO_TEST_SITE_DIR)/content $(OX_HUGO_TEST_SITE_DIR)/content-modified
 	@git checkout --ignore-skip-worktree-bits -- $(OX_HUGO_TEST_SITE_DIR)/content
-	@find $(OX_HUGO_TEST_SITE_DIR)/content-modified -name "*.md" | xargs sed -r -i 's/(["#]org)([a-f0-9]{7})/\1xxxxxxx/'
-	@find $(OX_HUGO_TEST_SITE_DIR)/content-golden -name "*.md" | xargs sed -r -i 's/(["#]org)([a-f0-9]{7})/\1xxxxxxx/'
+	@find $(OX_HUGO_TEST_SITE_DIR)/content-modified -name "*.md" -exec perl -pi -e 's/(["#]org)([a-f0-9]{7})/\1xxxxxxx/' -- '{}' +
+	@find $(OX_HUGO_TEST_SITE_DIR)/content-golden -name "*.md" -exec perl -pi -e 's/(["#]org)([a-f0-9]{7})/\1xxxxxxx/' -- '{}' +
 	@diff -r $(OX_HUGO_TEST_SITE_DIR)/content-modified $(OX_HUGO_TEST_SITE_DIR)/content-golden
 
 clean: ctemp

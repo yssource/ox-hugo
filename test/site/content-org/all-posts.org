@@ -52,6 +52,16 @@ Export this *second* post only by bringing point here and doing =M-x org-hugo-ex
 :END:
 This is some text before the first heading of this post.
 *** Unclickable image (works!)
+
+#+begin_src org
+# Org source
+,#+name: fig__unclickable_image
+,#+caption: Don't click this image -- It's not a hyperlink
+[[/images/org-mode-unicorn-logo.png]]
+#+end_src
+
+#+name: fig__unclickable_image
+#+caption: Don't click this image -- It's not a hyperlink
 [[/images/org-mode-unicorn-logo.png]]
 
 -----
@@ -74,9 +84,30 @@ So the sub-heading title and the post title both get the /Heading 1/
 tag and look the same size.
 *** Clickable link that opens the image (works!)
 [[/images/org-mode-unicorn-logo.png][Click here to see the unicorn]]
+
+Do *not* use ~file:~ prefix in the Description if you want the image
+link to show up as-is i.e. not be replaced by the image-at-link like
+in [[fig__clickable_image_that_opens_the_image]]:
+
+#+begin_src org
+# Org source
+[[/images/org-mode-unicorn-logo.png][/images/org-mode-unicorn-logo.png]]
+#+end_src
+
+[[/images/org-mode-unicorn-logo.png][/images/org-mode-unicorn-logo.png]]
+
 *** Clickable image that opens the image (works!)
 Click below image to jump to the unicorn image.
 
+#+begin_src org
+# Org source
+,#+name: fig__clickable_image_that_opens_the_image
+,#+caption: Click this image -- It's a hyperlink
+[[/images/org-mode-unicorn-logo.png][file:/images/org-mode-unicorn-logo.png]]
+#+end_src
+
+#+name: fig__clickable_image_that_opens_the_image
+#+caption: Click this image -- It's a hyperlink
 [[/images/org-mode-unicorn-logo.png][file:/images/org-mode-unicorn-logo.png]]
 
 - NOTE :: =file:= has to be used in the *Description component* of the
@@ -173,7 +204,7 @@ This is an inline non-hyperlinked image with the width attribute:
 :END:
 Some text before image.
 
-#+caption: A unicorn!
+#+caption: A unicorn! "Something in double quotes"
 [[/images/org-mode-unicorn-logo.png]]
 
 Some more text, after image.
@@ -520,6 +551,93 @@ Case where ~EXPORT_HUGO_SECTION~ is set to ~/~.
 This behaves the same as *not setting* ~EXPORT_HUGO_SECTION~ at all.
 
 This post is created at the site root.
+** Section fragment concatenation       :fragment:concatenation:deep_nesting:
+*** sub1 section
+:PROPERTIES:
+:EXPORT_HUGO_SECTION*: sub1
+:END:
+**** Post in sub1
+:PROPERTIES:
+:EXPORT_FILE_NAME: hugo-section-frag-post-in-posts-sub1
+:END:
+#+begin_description
+Test post created in ~posts/sub1~.
+#+end_description
+**** sub1/sub2 section
+:PROPERTIES:
+:EXPORT_HUGO_SECTION*: sub2
+:END:
+***** Post in sub1/sub2
+:PROPERTIES:
+:EXPORT_FILE_NAME: hugo-section-frag-post-in-posts-sub1-sub2
+:END:
+#+begin_description
+Test post created in ~posts/sub1/sub2~.
+#+end_description
+***** sub1/sub2/sub3 section
+:PROPERTIES:
+:EXPORT_HUGO_SECTION*: sub3
+:END:
+****** Post in sub1/sub2/sub3
+:PROPERTIES:
+:EXPORT_FILE_NAME: hugo-section-frag-post-in-posts-sub1-sub2-sub3
+:END:
+#+begin_description
+Test post created in ~posts/sub1/sub2/sub3~.
+#+end_description
+*** Post with all HUGO_SECTION, HUGO_SECTION*, EXPORT_FILE_NAME in same subtree
+:PROPERTIES:
+:EXPORT_HUGO_SECTION: articles
+:EXPORT_HUGO_SECTION*: emacs
+:EXPORT_FILE_NAME: hugo-section-frag-post-in-articles-emacs
+:END:
+#+begin_description
+Test post created in ~articles/emacs~.
+#+end_description
+** Hugo Bundle concatenation :fragment:concatenation:deep_nesting:page_bundles:
+:PROPERTIES:
+:EXPORT_HUGO_SECTION: bundle-concat
+:END:
+*** Articles
+:PROPERTIES:
+:EXPORT_HUGO_SECTION*: articles
+:END:
+**** Articles Index page
+:PROPERTIES:
+:EXPORT_FILE_NAME: _index
+:END:
+This is an index page (/branch/ bundle) for all the articles.
+
+[[https://github.com/kaushalmodi/ox-hugo/issues/210#issuecomment-424891371][Ref]]
+**** Article One
+:PROPERTIES:
+:EXPORT_HUGO_BUNDLE: article-one
+:END:
+***** Article One Index page
+:PROPERTIES:
+:EXPORT_FILE_NAME: _index
+:END:
+This is an index page (/branch/ bundle) for Articles/Article One.
+***** Chapter One
+:PROPERTIES:
+:EXPORT_HUGO_BUNDLE: chapter-one
+:END:
+****** Article One Chapter One Index page
+:PROPERTIES:
+:EXPORT_FILE_NAME: _index
+:END:
+This is an index page (/branch/ bundle) for Articles/Article
+One/Chapter One.
+****** Section 1A
+:PROPERTIES:
+:EXPORT_FILE_NAME: section-1a
+:END:
+This is the content of Articles/Article One/Chapter One/Section 1A.
+****** Section 1B
+:PROPERTIES:
+:EXPORT_FILE_NAME: section-1b
+:END:
+This is the content of Articles/Article One/Chapter One/Section 1B.
 * Tables                                                              :table:
 ** Simple Table
 :PROPERTIES:
@@ -2288,10 +2406,11 @@ Index page of /Page Bundle B/.
 
 [[../files-to-be-copied-to-static/foo/copy-2-of-unicorn-logo.png]]
 ** Headless Page Bundle                                            :headless:
+*** Headless Page Bundle X
 :PROPERTIES:
 :EXPORT_HUGO_BUNDLE: headless-page-bundle-x
 :END:
-*** Headless Page Bundle Index Page
+**** Headless Page Bundle Index Page
 :PROPERTIES:
 :EXPORT_FILE_NAME: index
 :EXPORT_HUGO_HEADLESS: t
@@ -2316,25 +2435,24 @@ But you can get it by =.Site.GetPage ...=. Here is an example ([[https://github.
 There are many use cases of such headless page bundles:
 - Shared media galleries
 - Reusable page content "snippets"
-*** Bundled page foo in the headless bundle
+**** Bundled page foo in the headless bundle
 :PROPERTIES:
 :EXPORT_FILE_NAME: foo
 :END:
 "Foo" page in /Headless Page Bundle/.
-*** Bundled page bar in the headless bundle
+**** Bundled page bar in the headless bundle
 :PROPERTIES:
 :EXPORT_FILE_NAME: bar
 :END:
 "Bar" page in /Headless Page Bundle/.
-*** Bundled page zoo in the headless bundle
+**** Bundled page zoo in the headless bundle
 :PROPERTIES:
 :EXPORT_FILE_NAME: zoo
 :END:
 "Zoo" page in /Headless Page Bundle/.
-*** Page using the Headless Page Bundle                              :layout:
+*** Page using the Headless Page Bundle X                            :layout:
 :PROPERTIES:
 :EXPORT_HUGO_SECTION: posts
-:EXPORT_HUGO_BUNDLE:
 :EXPORT_FILE_NAME: page-using-headless-page-bundle
 :EXPORT_HUGO_LAYOUT: headless-bundle-single
 :END:
@@ -4454,6 +4572,25 @@ front-matter.
 In this post the =:EXPORT_DATE:= property is set to =2012-2017=, but
 the export will still happen fine, with the =date= front-matter not
 set.
+*** DONE Parsing date from LOGBOOK                         :logbook:noexport:
+:PROPERTIES:
+:EXPORT_FILE_NAME: parsing-date-from-logbook
+:LOG_INTO_DRAWER: t
+:LOGGING: DONE(!)
+:EXPORT_OPTIONS: d:t
+:END:
+:LOGBOOK:
+- State "DONE"       from "DRAFT"      [2018-09-06 Thu 11:42]
+- State "DONE"       from "DRAFT"      [2018-09-06 Thu 11:38]
+:END:
+#+begin_description
+Parse the date from an entry like ~"- State "DONE" from "DRAFT"
+[2018-09-06 Thu 11:25]~.
+#+end_description
+{{{oxhugoissue(203)}}}
+
+In the case of multiple ~"State "DONE" from .."~ entries, use the
+oldest entry to set the ~date~.
 ** Lastmod Date                                                     :lastmod:
 *** Lastmod date set using Org time stamp
 :PROPERTIES:
@@ -4468,6 +4605,28 @@ binding.
 :EXPORT_HUGO_LASTMOD: 2018-01-23
 :END:
 The =lastmod= for this post is Hugo-compatible i.e. [[https://tools.ietf.org/html/rfc3339#section-5.8][RFC3339-compliant]].
+*** DONE Parsing lastmod from LOGBOOK                      :logbook:noexport:
+:PROPERTIES:
+:EXPORT_FILE_NAME: parsing-lastmod-from-logbook
+:LOG_INTO_DRAWER: t
+:LOGGING: DONE(!)
+:EXPORT_OPTIONS: d:t
+:END:
+:LOGBOOK:
+- State "DONE"       from "DRAFT"      [2018-09-06 Thu 11:41]
+- State "DONE"       from "DRAFT"      [2018-09-06 Thu 11:40]
+:END:
+#+begin_description
+If LOGBOOK has multiple entries of ~"- State "DONE" from .."~, use the
+newest entry to parse the ~lastmod~ date from.
+#+end_description
+{{{oxhugoissue(203)}}}
+
+In the case of multiple ~"State "DONE" from .."~ entries,
+- Use the newest entry to set the ~lastmod~.
+- Use the oldest entry to set the ~date~.
+
+*Do not auto-set ~lastmod~ using ~current-time~ in this case.~
 ** Publish Date                                                 :publishdate:
 *** Publish date set using Org time stamp
 :PROPERTIES:
@@ -4589,6 +4748,293 @@ This post should also be created in =content/section-a/=.
 :END:
 #+toc: headlines 6
 #+include: "./all-posts.org::#nested-sections-example" :only-contents t
+*** TOC Local                                                         :local:
+:PROPERTIES:
+:EXPORT_FILE_NAME: toc-local
+:END:
+#+begin_description
+Test the ~#+toc: headlines N local~ syntax where a TOC is exported
+containing headlines only up to level-N relative to the headline in
+which that keyword is used.
+#+end_description
+Below, TOC is exported with only level-1 headings in this post.
+#+toc: headlines 1
+
+Below exported TOC should look the same as above even when it's
+generated using the ~local~ param as it is at the root level of this
+post.
+#+toc: headlines 1 local
+**** Post sub-heading 1
+Below, TOC is exported with only level-1 headings *relative to* this
+"Post sub-heading 1" section.
+#+toc: headlines 1 local
+***** Post sub-heading 1.1
+****** Post sub-heading 1.1.1
+***** Post sub-heading 1.2
+***** Post sub-heading 1.3
+**** Post sub-heading 2
+***** Post sub-heading 2.1
+***** Post sub-heading 2.2
+Below, TOC is exported with only up to level-2 headings *relative to*
+this "Post sub-heading 2.2" section.
+#+toc: headlines 2 local
+****** Post sub-heading 2.2.1
+****** Post sub-heading 2.2.2
+****** Post sub-heading 2.2.3
+Below, TOC is exported with only level-1 headings *relative to* this
+"Post sub-heading 2.2.3" section.
+#+toc: headlines 1 local
+******* Post sub-heading 2.2.3.1
+******* Post sub-heading 2.2.3.2
+**** Post sub-heading 3
+***** Post sub-heading 3.1
+* Pandoc Citations                                         :pandoc:citations:
+:PROPERTIES:
+:EXPORT_HUGO_PANDOC_CITATIONS: t
+:EXPORT_BIBLIOGRAPHY: cite/bib/bib1.bib, cite/bib/bib2.bib
+:EXPORT_HUGO_CUSTOM_FRONT_MATTER: :nocite '(@giovanelli2016 @eilan2016)
+:EXPORT_HUGO_PAIRED_SHORTCODES: %mdshortcode myshortcode
+:END:
+** Citations Example (TOML)                                            :toml:
+:PROPERTIES:
+:EXPORT_FILE_NAME: citations-example-toml
+:END:
+#+begin_description
+Test the parsing of Pandoc Citations, while also testing that ox-hugo
+exported Markdown doesn't get broken -- TOML front-matter.
+#+end_description
+{{{oxhugoissue(175)}}}
+*** Section 1
+Here is a test example file with an in-text citation where someone
+important says something important (e.g. @loncar2016). And here is
+another bit of blah with a footnote citation.[fn:5]
+
+See [[#citation-example-section-2]].
+*** Section 2
+:PROPERTIES:
+:CUSTOM_ID: citation-example-section-2
+:END:
+Content in section 2.
+*** Testing random Hugo shortcode
+#+begin_mdshortcode
+Text containing *Markdown*
+#+end_mdshortcode
+Some text.
+#+begin_myshortcode
+Text not containing *Markdown*
+#+end_myshortcode
+*** Testing ox-hugo inserted HTML div tags
+#+begin_foo
+*bold* /italics/
+#+end_foo
+*** Testing tables
+|----------+----------+----------|
+| Header 1 | Header 2 | Header 3 |
+|----------+----------+----------|
+| a        | b        | c        |
+| d        | e        | f        |
+|----------+----------+----------|
+*** Testing fenced code blocks
+#+begin_src emacs-lisp
+(message "Hello World")
+#+end_src
+*** Lists Galore
+- item1 in list
+- item2 in list. The following list is in a separate list body.
+
+
+- L1 -- foo1
+- L1 -- foo2
+  - L2 -- bar1
+  - L2 -- bar2
+    + L3 -- baz1
+    + L3 -- baz2
+      - L4 -- zoo1
+      - L4 -- zoo2
+        1. L5 -- numbered1
+        2. L5 -- numbered2
+      - L4 -- zoo1
+      - L4 -- zoo2
+    + L3 -- baz1
+    + L3 -- baz2
+  - L2 -- bar1
+  - L2 -- bar2
+- L1 -- foo1
+- L1 -- foo2
+** Citations Example (YAML)                                            :yaml:
+:PROPERTIES:
+:EXPORT_HUGO_FRONT_MATTER_FORMAT: yaml
+:EXPORT_FILE_NAME: citations-example-yaml
+:END:
+#+begin_description
+Test the parsing of Pandoc Citations, while also testing that ox-hugo
+exported Markdown doesn't get broken -- YAML front-matter.
+#+end_description
+{{{oxhugoissue(175)}}}
+*** Section 1
+Here is a test example file with an in-text citation where someone
+important says something important (e.g. @loncar2016). And here is
+another bit of blah with a footnote citation.[fn:5]
+
+See [[#citation-example-section-2]].
+*** Section 2
+:PROPERTIES:
+:CUSTOM_ID: citation-example-section-2
+:END:
+Content in section 2.
+** Citation Linking                                          :link_citations:
+:PROPERTIES:
+:EXPORT_FILE_NAME: citation-linking
+:EXPORT_HUGO_CUSTOM_FRONT_MATTER+: :link-citations true
+:END:
+#+begin_description
+Auto-link citations from post body to the citation in References
+section.
+#+end_description
+Here is a test example file with an in-text citation where someone
+important says something important (e.g. @loncar2016). And here is
+another bit of blah with a footnote citation.[fn:5]
+** Citation Forms                                                     :forms:
+:PROPERTIES:
+:EXPORT_BIBLIOGRAPHY: cite/bib/bib3.bib
+:EXPORT_HUGO_CUSTOM_FRONT_MATTER: :link-citations true
+:END:
+*** Citation Forms Test Body
+:PROPERTIES:
+:CUSTOM_ID: citation-forms-test-body
+:END:
+**** Citations in square brackets
+The citations withing square brackets will be rendered within
+parentheses.
+#+begin_src org
+Blah blah [see @doe99, pp. 33-35; also @smith04, ch. 1].
+#+end_src
+Blah blah [see @doe99, pp. 33-35; also @smith04, ch. 1].
+
+#+begin_src org
+Blah blah [@doe99, pp. 33-35, 38-39].
+#+end_src
+Blah blah [@doe99, pp. 33-35, 38-39].
+
+#+begin_src org
+Blah blah [@smith04; @doe99].
+#+end_src
+Blah blah [@smith04; @doe99].
+**** Citations with author name suppressed
+A minus sign (~-~) before the ~@~ will suppress mention of the author
+in the citation. This can be useful when the author is already
+mentioned in the text.
+#+begin_src org
+Smith says blah [-@smith04].
+#+end_src
+Smith says blah [-@smith04].
+**** In-text citations (no square brackets)
+#+begin_src org
+@smith04 says blah.
+#+end_src
+@smith04 says blah.
+
+#+begin_src org
+@smith04 [p. 33] says blah.
+#+end_src
+@smith04 [p. 33] says blah.
+**** Actual citations for this test post :)
+See @addCite17; @rmdCitations for more.
+*** Citation Forms
+:PROPERTIES:
+:EXPORT_FILE_NAME: citation-forms
+:END:
+#+begin_description
+Demonstrating different styles / forms of citations
+#+end_description
+#+include: "./all-posts.org::#citation-forms-test-body" :only-contents t
+*** Citation Forms (Custom CSL)                                   :forms:csl:
+:PROPERTIES:
+:EXPORT_FILE_NAME: citation-forms-apa-csl
+:EXPORT_HUGO_CUSTOM_FRONT_MATTER+: :csl cite/csl/apa.csl
+:END:
+#+begin_description
+Demonstrating different styles / forms of citations using APA CSL
+#+end_description
+#+include: "./all-posts.org::#citation-forms-test-body" :only-contents t
+
+*Compare the References section below with [[/posts/citation-forms/#references][that]] when using the default
+ CSL.*
+** No Citations                                                        :none:
+:PROPERTIES:
+:EXPORT_FILE_NAME: citations-none
+:EXPORT_HUGO_CUSTOM_FRONT_MATTER: :nocite '()
+:END:
+This post has Pandoc Citations parsing enabled, but has no actual
+citations.
+** Invalid Nocites                                           :invalid:nocite:
+:PROPERTIES:
+:EXPORT_FILE_NAME: invalid-nocites
+:EXPORT_HUGO_CUSTOM_FRONT_MATTER: :nocite '(@foo @bar)
+:END:
+This post has citations ~@foo~ and ~@bar~ listed in ~nocite~
+meta-data. But they are invalid as they don't exist in any of the
+bibliography files.
+
+But that generates neither a Pandoc warning nor error.
+
+As the final Pandoc output Markdown ends up with *no* references, the
+Pandoc output is discarded, and the original ~ox-hugo~ output is used
+instead.
+** Citations with captions                          :caption:figure:plantuml:
+:PROPERTIES:
+:EXPORT_HUGO_BUNDLE: citations-with-captions
+:EXPORT_FILE_NAME: index
+:EXPORT_DATE: 2018-08-19
+:EXPORT_HUGO_CUSTOM_FRONT_MATTER+: :link-citations true
+:END:
+#+begin_description
+This test tests the following:
+- Pandoc leave the HTML ~span~ tags as-is.
+- Pandoc does not escape the ~<~ in the ~figure~ shortcodes with
+  captions (in general: ~{{< ..>}}~ shortcodes that could wrap across
+  lines).
+- While Pandoc auto-wraps the re-written Markdown, it also wraps the
+  ~{{< .. >}}~ shortcodes. The test checks that such "wrapped
+  shortcodes" get unwrapped.
+#+end_description
+{{{oxhugoissue(191)}}}
+
+#+name: code__plantuml_nested_boxes
+#+caption: Nested Boxes using PlantUML
+#+begin_src plantuml :file images/citations-with-captions/nested-boxes.svg :eval yes :exports both
+rectangle "<html>, <body>, etc." as a  {
+  rectangle "<div>..." as b #antiquewhite {
+    rectangle "<video>...\n\n\n" as c
+  }
+}
+#+end_src
+# The order of #+caption and #+RESULTS is important here.
+# Ref: https://emacs.stackexchange.com/a/12155/115
+#+caption: PlantUML generated figure showing nested boxes
+#+RESULTS: code__plantuml_nested_boxes
+[[file:images/citations-with-captions/nested-boxes.svg]]
+** Disabling Pandoc citations in a subtree                          :disable:
+*** Disabling Pandoc citations in a subtree (empty string)
+:PROPERTIES:
+:EXPORT_FILE_NAME: disabling-pandoc-citations-in-a-subtree-empty-string
+:EXPORT_HUGO_PANDOC_CITATIONS:
+:END:
+#+begin_description
+Test that ~:EXPORT_HUGO_PANDOC_CITATIONS:~ disables Pandoc citations
+in a subtree.
+#+end_description
+The Nocites in the front-matter do not get rendered as citations.
+*** Disabling Pandoc citations in a subtree (nil string)
+:PROPERTIES:
+:EXPORT_FILE_NAME: disabling-pandoc-citations-in-a-subtree-nil-string
+:EXPORT_HUGO_PANDOC_CITATIONS: nil
+:END:
+#+begin_description
+Test that ~:EXPORT_HUGO_PANDOC_CITATIONS: nil~ disables Pandoc
+citations in a subtree.
+#+end_description
+The Nocites in the front-matter do not get rendered as citations.
 * Export Options                                              :export_option:
 ** Table of Contents (TOC)                                              :toc:
 =ox-hugo= has the =with-toc= option disabled by default as Hugo has an
@@ -4812,7 +5258,7 @@ it is disabled using =:EXPORT_OPTIONS: title:nil=.
 This post will be exported without =author= in the front-matter because
 it is disabled using =:EXPORT_OPTIONS: author:nil=.
 ** Creator                                             :creator:front_matter:
-*** Default Creator                            :dont_export_during_make_test:
+*** Default Creator
 :PROPERTIES:
 :EXPORT_DATE: 2017-12-01
 :EXPORT_OPTIONS: creator:t
@@ -4892,13 +5338,16 @@ And Markdown emphasis characters like *, `  and _ will not escaped in here.
 From {{{oxhugoissue(154)}}}, we see an actual case of where that =*=
 will need to remain unescaped:
 
-#+begin_src html
+#+begin_src org
+# Org source
+,#+begin_export html
 <div>
   <script type="text/javascript">
     var a = 3;
     var b = 2*a;
   </script>
 </div>
+,#+end_export
 #+end_src
 
 #+begin_export html
@@ -4910,7 +5359,8 @@ will need to remain unescaped:
 </div>
 #+end_export
 
-/See the Markdown source of this page./
+/See the Markdown source of this page to see the verbatim-inserted
+HTML./
 * Miscellaneous Front Matter                                   :front_matter:
 ** Hugo Aliases                                                     :aliases:
 *** Alias without section portion 1
@@ -4957,7 +5407,14 @@ auto-prefixed with the section for the current post.
 :EXPORT_FILE_NAME: single-author
 :EXPORT_AUTHOR: Foo Bar
 :END:
-This post has 1 author.
+This post has 1 author set as a TOML list in front-matter.
+*** Single author as a custom parameter                           :custom_fm:
+:PROPERTIES:
+:EXPORT_FILE_NAME: single-author-custom
+:EXPORT_AUTHOR:
+:EXPORT_HUGO_CUSTOM_FRONT_MATTER: :author "Foo Bar"
+:END:
+This post has 1 author set as a TOML string in front-matter.
 *** Multiple authors
 :PROPERTIES:
 :EXPORT_FILE_NAME: multiple-authors
@@ -5114,10 +5571,20 @@ Post content.
 :EXPORT_FILE_NAME: locale-specified
 :EXPORT_HUGO_LOCALE: es_ES
 :END:
+#+begin_description
+Specify the locale using ~:EXPORT_HUGO_LOCALE: es_ES~ property.
+#+end_description
+Locale exporting is enabled using ~:EXPORT_HUGO_WITH_LOCALE: t~ in the
+post's parent subtree.
 *** Auto-detected locale in front-matter                        :auto_detect:
 :PROPERTIES:
 :EXPORT_FILE_NAME: locale-auto-detect
 :END:
+#+begin_description
+Locale is not specified, so is auto-detected.
+#+end_description
+Locale exporting is enabled using ~:EXPORT_HUGO_WITH_LOCALE: t~ in the
+post's parent subtree.
 ** Images                                                            :images:
 *** Single image                                                     :single:
 :PROPERTIES:
@@ -5306,10 +5773,73 @@ there shouldn't be any error.
 :END:
 Some themes might expect the front-matter list variable for authors to
 be ~authors~ instead of the default ~author~ created by ~ox-hugo~.
+*** Remove a front-matter key                                        :remove:
+:PROPERTIES:
+:EXPORT_FILE_NAME: remove-a-front-matter-key
+:EXPORT_HUGO_CUSTOM_FRONT_MATTER: :foo 1 :bar 2
+:EXPORT_HUGO_FRONT_MATTER_KEY_REPLACE: foo>nil bar>zoo
+:END:
+#+begin_description
+This test removes the ~foo~ front-matter key from the exported file
+(and replaces ~bar~ key with ~zoo~).
+#+end_description
+** DONE Parsing notes from LOGBOOK                   :notes:logbook:noexport:
+:PROPERTIES:
+:EXPORT_FILE_NAME: parsing-notes-from-logbook
+:LOG_INTO_DRAWER: t
+:LOGGING: TODO(!) DRAFT(!) DONE(!)
+:EXPORT_OPTIONS: d:t
+:END:
+:LOGBOOK:
+- Note taken on [2018-09-06 Thu 11:45] \\
+  Another note.
+- Note taken on [2018-09-06 Thu 11:37] \\
+  A note
+- State "DONE"       from "DRAFT"      [2018-09-06 Thu 11:25]
+- State "DRAFT"      from "TODO"       [2018-09-06 Thu 11:25]
+- State "TODO"       from              [2018-09-06 Thu 11:25]
+:END:
+#+begin_description
+Parse notes from LOGBOOK into a TOML table (YAML map?) of ~notes~
+front-matter.
+#+end_description
+
+{{{oxhugoissue(203)}}}
+
+For example,
+
+#+begin_src org
+:LOGBOOK:
+- Note taken on [2018-09-06 Thu 11:45] \\
+  Another note.
+- Note taken on [2018-09-06 Thu 11:37] \\
+  A note
+- State "DONE"       from "DRAFT"      [2018-09-06 Thu 11:25]
+- State "DRAFT"      from "TODO"       [2018-09-06 Thu 11:25]
+- State "TODO"       from              [2018-09-06 Thu 11:25]
+:END:
+#+end_src
+
+should export these ~notes~ in TOML front-matter (and the equivalent
+in YAML):
+#+begin_src toml
+[[notes]]
+  index = 0
+  date = 2018-09-06T11:37:00-04:00
+  content = "A note."
+[[notes]]
+  index = 1
+  date = 2018-09-06T11:45:00-04:00
+  content = "Another note."
+#+end_src
+
+- Note :: The state change notes are intentionally put in this test
+          LOGBOOK, because we want to ensure that they don't seep into
+          the ~notes~ front-matter.
 * Date and slug inheritance                           :inheritance:date:slug:
 :PROPERTIES:
 :EXPORT_DATE: 2018-02-12
-:EXPORT_HUGO_SLUG: data-and-slug-inheritance
+:EXPORT_HUGO_SLUG: date-and-slug-inheritance
 :END:
 ** Date and slug inheritance (English)
 :PROPERTIES:
@@ -6287,7 +6817,7 @@ state of Org TODO overrides that.
 :EXPORT_FILE_NAME: hugo-draft-false-todo-state-done
 :END:
 The *DONE* state of Org TODO sets ~draft~ to ~false~ for this post.
-*** HUGO_DRAFT false, no TODO state                            :property:
+*** HUGO_DRAFT false, no TODO state                                :property:
 :PROPERTIES:
 :EXPORT_FILE_NAME: hugo-draft-false-todo-state-none
 :END:
@@ -6334,6 +6864,15 @@ Org TODO state. So the draft state defaults to /false/.
 If a post has the =DRAFT= state set, the =draft= front matter variable
 should be set to =true=, even if the post has a sub-heading
 immediately after the post heading.
+* Illegal cases                        :illegal:dont_export_during_make_test:
+** Subtree with empty EXPORT_FILE_NAME       :subtree:empty:export_file_name:
+:PROPERTIES:
+:EXPORT_FILE_NAME:
+:END:
+#+begin_description
+This subtree must not export because the EXPORT_FILE_NAME is empty.
+#+end_description
+{{{oxhugoissue(211)}}}
 * Reusable sections                                        :noexport:ARCHIVE:
 ** Quote block with source block, followed by source block
 :PROPERTIES:
@@ -6587,6 +7126,8 @@ blandit in.
 Results from static site search implemented using /Fusejs/, /jquery/
 and /mark.js/. -- [[https://gist.github.com/eddiewebb/735feb48f50f0ddd65ae5606a1cb41ae][Source]]
 * Footnotes
+
+[fn:5] See [@thompson2016].
 [fn:4] Even if the user has set the =HUGO_CODE_FENCE= value to =t=
 (via variable, keyword or subtree property), the Hugo =highlight=
 shortcode will be used automatically instead of code fences if either

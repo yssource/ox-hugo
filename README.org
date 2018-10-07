@@ -63,9 +63,9 @@ You can generate the same too! Simply clone this repo and do =make
 doc_md=.
 
 *Make sure you visit the above link to read more on:*
-- [[https://ox-hugo.scripter.co/doc/why-ox-hugo][Why =ox-hugo=?]]
-- [[https://ox-hugo.scripter.co/doc/auto-export-on-saving][Auto exporting to Markdown each time the Org file is saved]]
-- [[https://ox-hugo.scripter.co/doc/org-capture-setup][Using Org Capture to start a new blog post]]
+- [[https://ox-hugo.scripter.co/doc/why-ox-hugo/][Why =ox-hugo=?]]
+- [[https://ox-hugo.scripter.co/doc/auto-export-on-saving/][Auto exporting to Markdown each time the Org file is saved]]
+- [[https://ox-hugo.scripter.co/doc/org-capture-setup/][Using Org Capture to start a new blog post]]
 - .. and many more topics and examples
 ** Source of the Documentation site
 - [[https://raw.githubusercontent.com/kaushalmodi/ox-hugo/master/doc/ox-hugo-manual.org][Org source]]
@@ -96,12 +96,17 @@ You can do that by adding the below to your config:
 #+BEGIN_SRC emacs-lisp
 (with-eval-after-load 'ox
   (require 'ox-hugo))
+(require 'ox-hugo-auto-export) ;If you want the auto-exporting on file saves
 #+END_SRC
-If you use =use-package=, you can do the below instead:
+If you use [[https://github.com/jwiegley/use-package][=use-package=]], you can do the below instead:
 #+BEGIN_SRC emacs-lisp
 (use-package ox-hugo
+  :ensure t            ;Auto-install the package from Melpa (optional)
   :after ox)
+(use-package ox-hugo-auto-export) ;If you want the auto-exporting on file saves
 #+END_SRC
+
+Also see the [[https://ox-hugo.scripter.co/doc/auto-export-on-saving/][Auto Exporting]] section.
 
 *Spacemacs*
 
@@ -115,30 +120,40 @@ Spacemacs users can choose to add this snippet to their
 
   ;; ox-hugo config
   (use-package ox-hugo
-    :ensure t                           ;Auto-install the package from Melpa
-    :after ox))
+    :ensure t            ;Auto-install the package from Melpa (optional)
+    :after ox)
+  (use-package ox-hugo-auto-export) ;If you want the auto-exporting on file saves
+  )
 #+END_SRC
 
+#+BEGIN_note
+You do have _have_ to use the =use-package= version when using
+Spacemacs. That version was used because =use-package= is installed by
+default in Spacemacs.
+#+END_note
 If you do so, you *also need to* add =ox-hugo= to
 =dotspacemacs-additional-packages=.
 
-/Verified to work on Spacemacs =develop= branch with =spacemacs-base=
-distribution, =emacs= editing style./
+/This was verified to work on Spacemacs =develop= branch with
+=spacemacs-base= distribution, =emacs= editing style. --
+<2017-10-09 Mon>/
 ** Before you export
 Before you export check that these properties are set as you need:
 - HUGO_SECTION :: The default Hugo section name for all the posts.  See
-  [[https://gohugo.io/content/sections/][here]] for more information on Hugo sections.  It is
+  [[https://gohugo.io/content-management/sections/][here]] for more information on Hugo sections.  It is
   common for this property to be set to =posts= or
   =blog=.  The default value is set using
-  =org-hugo-default-section-directory=.
+  =org-hugo-default-section-directory=. See
+  [[https://ox-hugo.scripter.co/doc/hugo-section/][Hugo Section]] for details.
 - HUGO_BASE_DIR :: Root directory of the source for the Hugo site. If
   this is set to =~/hugo/=, the exported Markdown
   files will be saved to
-  =~/hugo/content/<HUGO_SECTION>/= directory.  By
-  default, the Markdown files reside in a hierarchy
-  under the =content/= directory in the site root
-  directory ([[https://gohugo.io/content/organization/][ref]]). If you try to export without
-  setting this property, you will get this error:
+  =~/hugo/content/<HUGO_SECTION>/=
+  directory[fn:-1-section_more].  By default, the
+  Markdown files reside in a hierarchy under the
+  =content/= directory in the site root directory
+  ([[https://gohugo.io/content-management/organization/][ref]]). If you try to export without setting this
+  property, you will get this error:
   #+BEGIN_EXAMPLE
     user-error: It is mandatory to set the HUGO_BASE_DIR property
   #+END_EXAMPLE
@@ -146,6 +161,12 @@ Before you export check that these properties are set as you need:
 *Important*: If you choose to export an Org subtree as a post, you
  need to set the =EXPORT_FILE_NAME= subtree property. That property is
  used by this package to figure out where the current post starts.
+
+[fn:-1-section_more] The ~HUGO_SECTION~ is the bare-minimum requirement
+to specify the destination path. That path can be further tweaked
+using ~HUGO_BUNDLE~ key (and the associated ~EXPORT_HUGO_BUNDLE~
+property), and the ~EXPORT_HUGO_SECTION*~ property (only for
+/per-subtree/ exports).
 ** Export bindings
 The common =ox-hugo= export bindings are:
 *** For both one-post-per-subtree and one-post-per-file flows
@@ -202,7 +223,7 @@ available customization options for this package.
   #+END_SRC
 - Export descriptive or definition lists in Blackfriday-friendly
   Markdown format -- #[[https://github.com/kaushalmodi/ox-hugo/issues/114][114]].
-- Support Org Special Blocks [[https://www.gnu.org/software/emacs/manual/html_node/org/Special-blocks.html][like in HTML and LaTeX exports]] --
+- Support Org Special Blocks like in HTML and [[https://orgmode.org/manual/Special-blocks-in-LaTeX-export.html][LaTeX exports]] --
   #[[https://github.com/kaushalmodi/ox-hugo/issues/105][105]]. Here's one little example:
   #+BEGIN_SRC org
     ,#+begin_mark
@@ -320,7 +341,7 @@ available customization options for this package.
 - If you have a case where you need to have an Org source block
   instead a quote block, and then a source block after that quote
   block (/I know, a very common case../ :wink:), Blackfriday barfs
-  (Blackfriday # [[https://github.com/russross/blackfriday/issues/407][407]]). But we now have a workaround, which /just
+  (Blackfriday #[[https://github.com/russross/blackfriday/issues/407][407]]). But we now have a workaround, which /just
   works/ -- #[[https://github.com/kaushalmodi/ox-hugo/issues/98][98]].
 - Now =ATTR_HTML= above even hyper-linked images works (earlier it
   worked only above non-hyper-linked images).
@@ -337,7 +358,7 @@ available customization options for this package.
 - Add missing http/https/ftp prefix for hyper-linked images.
 *** Meta
 - Add documentation on how you can have
-  [[https://ox-hugo.scripter.co/doc/images-in-content][Images live in the same directory as Org
+  [[https://ox-hugo.scripter.co/doc/images-in-content/][Images live in the same directory as Org
   source]] -- #[[https://github.com/kaushalmodi/ox-hugo/issues/91][91]].
 - Now only Org files for the [[https://ox-hugo.scripter.co][documentation site]] need to be committed
   to git. =ox-hugo= then exports those to Markdown, and then Hugo
@@ -348,7 +369,7 @@ available customization options for this package.
   yourself :smile:.
 ** v0.5 <2017-11-06 Mon>
 *** Features
-- Export TOC as a Markdown ordered list. See [[https://ox-hugo.scripter.co/doc/org-toc][Table of
+- Export TOC as a Markdown ordered list. See [[https://ox-hugo.scripter.co/doc/org-toc/][Table of
   Contents]] -- #[[https://github.com/kaushalmodi/ox-hugo/issues/88][88]].
 - =#+attr_html= above http/https/ftp links is now supported (useful
   for specifying the =target=, =rel=, attributes, for example).
@@ -382,7 +403,7 @@ available customization options for this package.
     set categories (tags with "@") globally in the file.
 
 See the new section added to documentation:
-[[https://ox-hugo.scripter.co/doc/tags-and-categories][*Tags and Categories*]]
+[[https://ox-hugo.scripter.co/doc/tags-and-categories/][*Tags and Categories*]]
 *** Features
 - Support specifying the =:width= parameter in the =#+attr_html= above
   image links. That eventually gets transformed to the =width=
@@ -402,7 +423,7 @@ See the new section added to documentation:
 - Source blocks can now be exported with line numbers and/or
   highlighting!
 
-  See [[https://ox-hugo.scripter.co/doc/source-blocks][Source Blocks]] for details.
+  See [[https://ox-hugo.scripter.co/doc/source-blocks/][Source Blocks]] for details.
 ** v0.2.3 <2017-10-11 Wed>
 *** Fixes
 - =org-hugo-slug= earlier stripped off only the =code= HTML tag

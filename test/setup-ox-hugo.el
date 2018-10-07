@@ -1,4 +1,4 @@
-;; Time-stamp: <2018-02-22 14:58:32 kmodi>
+;; Time-stamp: <2018-09-05 21:36:21 kmodi>
 
 ;; Setup to export Org files to Hugo-compatible Markdown using
 ;; `ox-hugo' in an "emacs -Q" environment.
@@ -6,6 +6,11 @@
 ;; Some sane settings
 (setq-default require-final-newline t)
 (setq-default indent-tabs-mode nil)
+(setq-default make-backup-files nil)
+
+;; Toggle debug on error, including `user-error'.
+(setq debug-ignored-errors (remq 'user-error debug-ignored-errors))
+(toggle-debug-on-error)
 
 (defvar ox-hugo-test-setup-verbose nil
   "When non-nil, enable printing more messages from setup-ox-hugo.el.")
@@ -90,15 +95,18 @@ even if they are found as dependencies."
       ;; Below require will auto-create `package-user-dir' it doesn't exist.
       (require 'package)
 
+      ;; Even if we don't need to install Org from Elpa, we need to
+      ;; add Org Elpa in `package-archives' to prevent the "Package
+      ;; ‘org-9.0’ is unavailable" error.
+      ;;
+      ;; `setq' is used instead of `add-to-list' because we don't need
+      ;; the default GNU Elpa archive for this test.
+      (setq package-archives '(("org" . "https://orgmode.org/elpa/"))) ;For latest stable `org'
+
       (let* ((no-ssl (and (memq system-type '(windows-nt ms-dos))
                           (not (gnutls-available-p))))
              (url (concat (if no-ssl "http" "https") "://melpa.org/packages/")))
         (add-to-list 'package-archives (cons "melpa" url))) ;For `toc-org'
-
-      ;; Even if we don't need to install Org from Elpa, we need to
-      ;; add Org Elpa in `package-archives' to prevent the "Package
-      ;; ‘org-9.0’ is unavailable" error.
-      (add-to-list 'package-archives '("org" . "https://orgmode.org/elpa/")) ;For latest stable `org'
 
       ;; Load emacs packages and activate them.
       ;; Don't delete this line.
@@ -188,6 +196,10 @@ Emacs installation.  If Emacs is installed using
 
 (require 'ox-hugo-export-gh-doc)        ;For `ox-hugo-export-gh-doc'
 
+;; Allow setting few vars in Local Variables in the test files.
+(put 'org-hugo-auto-set-lastmod 'safe-local-variable 'booleanp)
+(put 'org-hugo-suppress-lastmod-period 'safe-local-variable 'floatp)
+
 (with-eval-after-load 'org
   ;; Allow multiple line Org emphasis markup
   ;; http://emacs.stackexchange.com/a/13828/115
@@ -217,16 +229,35 @@ Emacs installation.  If Emacs is installed using
     (setq org-confirm-babel-evaluate #'ox-hugo-org-confirm-babel-evaluate-fn))
 
   (with-eval-after-load 'ox
-    (setq org-export-headline-levels 4) ;default is 3
+    (setq org-export-headline-levels 4))) ;default is 3
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; Settings *only* for tests (applied during "make test")
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(when (string= "1" (getenv "TEST_ENABLED"))
+  ;; Set the time-zone to UTC.
+  ;; If TZ is unset, Emacs uses system wall clock time, which is a
+  ;; platform-dependent default time zone --
+  ;; https://www.gnu.org/software/emacs/manual/html_node/elisp/Time-Zone-Rules.html
+  (setenv "TZ" "UTC")
+
+  ;; Force the locate to en_US for the tests.
+  (set-locale-environment "en_US.UTF-8")
+  (setenv "LANGUAGE" "en_US.UTF-8")
+
+  ;; Override the default `org-hugo-export-creator-string' so that this
+  ;; string is consistent in all ox-hugo tests.
+  (setq org-hugo-export-creator-string "Emacs + Org mode + ox-hugo")
+
+  ;; Override the inbuilt `current-time' function so that the "lastmod"
+  ;; tests work.
+  (defun ox-hugo-test/current-time-override (&rest args)
+    "Hard-code the 'current time' so that the lastmod tests are reproducible.
+Fake current time: 2100/12/21 00:00:00 (arbitrary)."
+    (encode-time 0 0 0 21 12 2100))
+  (advice-add 'current-time :override #'ox-hugo-test/current-time-override)
+  ;; (advice-remove 'current-time #'ox-hugo-test/current-time-override)
+
+  (with-eval-after-load 'ox
     (add-to-list 'org-export-exclude-tags "dont_export_during_make_test")))
-
-;; Wed Sep 20 13:37:06 EDT 2017 - kmodi
-;; Below does not get applies when running emacs --batch.. need to
-;; figure out a solution.
-(custom-set-variables
- '(safe-local-variable-values
-   (quote
-    ((org-hugo-footer . "
-
-[//]: # \"Exported with love from a post written in Org mode\"
-[//]: # \"- https://github.com/kaushalmodi/ox-hugo\"")))))

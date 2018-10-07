@@ -1,18 +1,11 @@
 #+title: GitHub Ancillary Files
 #+author: Kaushal Modi
 
-#+macro: commit commit [[https://github.com/kaushalmodi/ox-hugo/commit/$1][$1]]
-#+macro: issue #[[https://github.com/kaushalmodi/ox-hugo/issues/$1][$1]]
-#+macro: bfissue Blackfriday # [[https://github.com/russross/blackfriday/issues/$1][$1]]
-#+macro: hugoissue Hugo #[[https://github.com/gohugoio/hugo/issues/$1][$1]]
+#+setupfile: doc-setupfile.org
+
 #+macro: imageclick [[https://raw.githubusercontent.com/kaushalmodi/ox-hugo/master/doc/static/images/$1][https://raw.githubusercontent.com/kaushalmodi/ox-hugo/master/doc/static/images/$1]]
-#+macro: doc [[https://ox-hugo.scripter.co/doc/$1][$2]]
-#+macro: travis [[https://travis-ci.org/kaushalmodi/ox-hugo][https://travis-ci.org/kaushalmodi/ox-hugo.svg?branch=master]]
-#+macro: melpa [[https://melpa.org/#/ox-hugo][file:https://melpa.org/packages/ox-hugo-badge.svg]]
-#+macro: GPLv3 [[https://www.gnu.org/licenses/gpl-3.0][https://img.shields.io/badge/License-GPL%20v3-blue.svg]]
-#+macro: gitter [[https://gitter.im/KaushalModi/Lobby][https://badges.gitter.im/KaushalModi/Lobby.svg]]
-#+macro: saythanks [[https://saythanks.io/to/kaushalmodi][https://img.shields.io/badge/Say%20Thanks-!-1EAEDB.svg]]
-#+macro: user @[[https://github.com/$1][*$1*]]
+#+macro: doc [[https://ox-hugo.scripter.co/doc/$1/$2][$3]]
+
 
 * Readme                                                             :readme:
 :PROPERTIES:
@@ -43,9 +36,9 @@ You can generate the same too! Simply clone this repo and do =make
 doc_md=.
 
 *Make sure you visit the above link to read more on:*
-- {{{doc(why-ox-hugo,Why =ox-hugo=?)}}}
-- {{{doc(auto-export-on-saving,Auto exporting to Markdown each time the Org file is saved)}}}
-- {{{doc(org-capture-setup,Using Org Capture to start a new blog post)}}}
+- {{{doc(why-ox-hugo,,Why =ox-hugo=?)}}}
+- {{{doc(auto-export-on-saving,,Auto exporting to Markdown each time the Org file is saved)}}}
+- {{{doc(org-capture-setup,,Using Org Capture to start a new blog post)}}}
 - .. and many more topics and examples
 *** Source of the Documentation site
 - [[https://raw.githubusercontent.com/kaushalmodi/ox-hugo/master/doc/ox-hugo-manual.org][Org source]]
@@ -73,3 +66,7 @@ export from Org to Markdown, and then finally =hugo=.
 #+include: "./ox-hugo-manual.org::#debug" :only-contents t
 ** Test
 #+include: "./ox-hugo-manual.org::#test" :only-contents t
+* COMMENT Local Variables                                           :ARCHIVE:
+# Local Variables:
+# org-hugo-auto-export-on-save: nil
+# End:

@@ -1,7 +1,7 @@
 # Courtesy: https://github.com/magit/magit/blob/master/.travis.yml
 dist: trusty
 sudo: true
-language: generic
+language: r # So that pandoc comes installed, https://github.com/jgm/pandoc/wiki/Using-pandoc-in-Travis-CI
 env:
   global:
     - CURL="curl -fsSkL --retry 9 --retry-delay 9"
@@ -24,7 +24,7 @@ script:
   # Don't run "make doc" on travis; it's finicky
   # and fails on running the getJSON command in hugo.
   # - make --no-print-directory doc EMACS=${EMACS} # Just ensure that "make doc" doesn't fail for any reason.. this is *not* used to do Org->Markdown doc conversion using Travis.
-  - make --no-print-directory test EMACS=${EMACS}
+  - make --no-print-directory -j1 test EMACS=${EMACS}
   - make --no-print-directory vcheck EMACS=${EMACS}
 notifications:
   email:
