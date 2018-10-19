@@ -1396,13 +1396,14 @@ tags set even on that subtree, the inherited values of Org-style tags
 from parent headlines and even =#+filetags=.
 ****** Marking files to not be exported
 Note that if you want to prevent a file from getting exported, you can
-assign a special tag to the whole file (example: =no_no_dont_export=),
-but that tag *has to be set using the =#+filetags= keyword*
-(=#+hugo_tags= keyword is *only* for setting the tags in Hugo
-front-matter). This applies to both, file-based and subtree-based[fn:2]
-export flows.
+assign a special tag to the whole file (example: =no_no_dont_export=).
+- For /per-subtree/ flow, that /don't export/ tag *has to be set using
+  the =#+filetags= keyword*[fn:2].
+- For /per-file/ flow, that same /dont' export/ tag *has to be set
+  using the =#+hugo_tags= keyword* (because ~#+filetags~ keyword does
+  not work for /per-file/ flow. See [[* File-based Export]]).
 
-Then in your batch export setup, add that special tag to the
+Then in your export setup, add that special tag to the
 =org-export-exclude-tags= variable. You can grep through this repo for
 the special tag =dont_export_during_make_test= that is used to mark
 few Org files to not be exported when running the
@@ -1437,6 +1438,10 @@ export flow. So =#+filetags= will have no effect in this flow.
 
 - To set tags, use =#+hugo_tags=.
 - To set categories, use =#+hugo_categories=.
+
+#+begin_note
+=#+filetags= will have no effect in *file-based* export flow.
+#+end_note
 **** Hyphens and Spaces in Org tags (and categories)
 Hyphens and spaces are not allowed in Org tags (=* Heading :TAG:=).
 
@@ -1853,6 +1858,26 @@ by setting it as a /custom/ front-matter parameter:
 - Note :: Remember to set the default author name to nil if doing this,
           by setting the ~#+author~ keyword (or ~:EXPORT_AUTHOR:~
           property) to /nothing/.
+*** Hugo Summary Splitter
+:PROPERTIES:
+:EXPORT_FILE_NAME: hugo-summary-splitter
+:END:
+#+begin_description
+Manual splitting of Hugo summary.
+#+end_description
+In Hugo, the point of split between the summary and main content can
+be specified using the ~<!--more-->~ HTML snippet. See [[https://gohugo.io/content-management/summaries/#manual-summary-splitting][its
+documentation]] for more information.
+
+The recommended way to do that in the Org files you export using
+~ox-hugo~ is to use ~#+hugo: more~.
+
+Here's an example:
+#+begin_src org
+My post summary.
+,#+hugo: more
+My post content.
+#+end_src
 ** Enhancements
 :PROPERTIES:
 :EXPORT_HUGO_MENU: :menu "6.enhancements"
@@ -2464,8 +2489,12 @@ floats = [12.3, -5.0, -1.7e-05]
 booleans = [true, false]
 #+end_src
 **** Maps of single and list values
-Maps of keys with single or list values are supported. /Maps of maps
-are not supported./
+Maps of keys with single or list values are supported.
+
+#+begin_note
+/Maps of maps/ or /TOML tables of tables/ are not supported. See [[*
+Front-matter Extra]] section for an alternative.
+#+end_note
 ***** Syntax
 #+begin_src org
 :PROPERTIES:
@@ -2494,6 +2523,66 @@ Above exports to TOML front-matter as:
   floats = [12.3, -5.0, -1.7e-05]
   booleans = [true, false]
 #+end_src
+**** Front-matter Extra
+You would use this feature only if you need to use some front-matter
+that ~ox-hugo~ cannot translate from native Org keywords/properties to
+TOML/YAML front-matter. A good example is if you need to add custom
+/map of map/ type front-matter (or TOML /tables of tables/).
+
+The front-matter specified in this manner is appended *verbatim* to
+the *end* of the ~ox-hugo~ generated front-matter.
+***** TOML Extra front-matter
+Create a *toml* Org source block anywhere in your post, and add the
+special header args ~:front_matter_extra t~ to it.
+
+/The TOML front-matter is the default. So you do not need to set
+~:EXPORT_HUGO_FRONT_MATTER_FORMAT: toml~./
+#+begin_src org
+,* Post with TOML front-matter (default)
+:PROPERTIES:
+:EXPORT_FILE_NAME: extra-front-matter-toml
+:END:
+The contents of the ~#+begin_src toml :front_matter_extra t~ TOML
+block here will get appended to the TOML front-matter.
+,#+begin_src toml :front_matter_extra t
+[[foo]]
+  bar = 1
+  zoo = "abc"
+[[foo]]
+  bar = 2
+  zoo = "def"
+,#+end_src
+#+end_src
+***** YAML Extra front-matter
+Create a *yaml* Org source block anywhere in your post, and add the
+special header args ~:front_matter_extra t~ to it.
+
+#+begin_src org
+,* Post with YAML front-matter
+:PROPERTIES:
+:EXPORT_FILE_NAME: extra-front-matter-yaml
+:EXPORT_HUGO_FRONT_MATTER_FORMAT: yaml
+:END:
+The contents of the ~#+begin_src yaml :front_matter_extra t~ YAML
+block here will get appended to the YAML front-matter.
+,#+begin_src yaml :front_matter_extra t
+foo:
+  - bar: 1
+    zoo: abc
+  - bar: 2
+    zoo: def
+,#+end_src
+#+end_src
+***** Wrong format of extra front-matter
+The ~:front_matter_extra t~ source block LANG *has* to match your
+selected front-matter format.
+
+You cannot have a ~#+begin_src yaml :front_matter_extra t~ extra
+front-matter block if your front-matter format is YAML (and
+vice-versa).
+
+If that happens, that blocks gets exported neither to the Markdown
+body nor to the front-matter.
 **** More Examples
 You can find many other examples by looking at {{{testtag(custom-fm)}}}.
 *** Hugo Section
